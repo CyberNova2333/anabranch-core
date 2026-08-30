@@ -8,25 +8,26 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.WritableByteChannel;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 单源分块下载器（第 1 步：不含多源）。
+ * 多源分块下载器。
  *
- * <p>先做单源是刻意的：多源是这个库的卖点，但它建立在「单源分块是对的」之上。
- * 反过来先做多源，一旦拼出坏文件，分不清是调度错了还是分块错了。
- *
- * <p>多源要接进来的位置只有一处——{@link #urlFor}。到时候把它换成
- * {@code SourceSet.pick(...)} 返回的那条源的 URL，其余（分块、续传、校验、
- * 提交）一行不用动。这就是把边界画在这里的理由。
+ * <p>分工：{@link Engine} 只管「取一个字节区间」，{@link Policy} 只管「挑谁、
+ * 失败了怎么办」，这里管分块、并发、重试循环、校验与提交。三者都不知道对方的
+ * 内部实现——这是能同时支持纯 Java HTTP 与 native aria2、并且能单独测策略的原因。
  */
 public final class Downloader {
 
     /** 分片下限：块太小时每块的请求开销占比会盖过并行收益。 */
     private static final long MIN_UNIT = 256L * 1024;
+    /** 单个分片的尝试次数上限。到顶仍失败就让整轮失败——有 .meta 兜底，不丢进度。 */
+    private static final int MAX_ATTEMPTS_PER_CHUNK = 6;
 
     private final Engine engine;
     private final int defaultChunks;
@@ -55,49 +56,97 @@ public final class Downloader {
         public Downloader build() { return new Downloader(this); }
     }
 
-    /** 多源接进来的唯一位置。现在是恒等函数。 */
-    private String urlFor(Request r, int chunkIndex) { return r.url; }
+    /**
+     * 探测所有源，看它们是不是在说同一件事。
+     *
+     * <p>值得在正式下载前跑一次：多源最阴的失败模式是某条镜像还是旧版本，
+     * 每块都「成功」、合起来是两个版本的拼接。逐块摘要能兜住，但要等整轮下完；
+     * 先探一次当场就能看出来。
+     */
+    public ProbeReport probeAll(String key, SourceSet set, Cancellation c) {
+        Map<String, Probe> ok = new LinkedHashMap<>();
+        Map<String, String> bad = new LinkedHashMap<>();
+        for (Source s : set.available()) {
+            if (c != null && c.isCancelled()) break;
+            try {
+                ok.put(s.id, engine.probe(s.urlFor(key), c == null ? Cancellation.NONE : c));
+            } catch (Exception e) {
+                bad.put(s.id, String.valueOf(e.getMessage()));
+            }
+        }
+        return new ProbeReport(ok, bad);
+    }
 
-    public Result download(Request r, Listener l, Cancellation c)
+    public Result download(Request r, SourceSet set, Listener l, Cancellation c)
             throws IOException {
         if (l == null) l = Listener.NONE;
         if (c == null) c = Cancellation.NONE;
+        if (set == null) throw new IllegalArgumentException("没有 SourceSet");
+        set.resetDisabled();
 
-        Probe probe = engine.probe(r.url, c);
-        if (probe.total <= 0) throw new IOException("探测不到总长度：" + r.url);
-        l.onTotal(probe.total);
+        Probed probed = probeAny(r.key, set, c);
+        if (probed.probe.total <= 0) throw new IOException("探测不到总长度：" + r.key);
+        l.onTotal(probed.probe.total);
 
-        long unit = chooseUnit(r, probe);
+        long unit = chooseUnit(r, probed.probe);
         File part = ResumeState.partFileFor(r.target);
-        ResumeState st = r.allowResume && probe.rangeSupported ? ResumeState.load(r.target) : null;
+        ResumeState st = r.allowResume && probed.probe.rangeSupported
+                ? ResumeState.load(r.target) : null;
 
-        if (st != null && !st.matches(probe.total, probe.etag, unit)) {
-            // 长度/etag/分块单位任一对不上，旧状态就没有意义。连 .part 一起丢——
-            // 留着它只会让下一次又走到这里重判一遍。
+        if (st != null && !st.matches(probed.probe.total, probed.probe.etag,
+                                      probed.source.id, unit)) {
             log.log("续传状态与服务端不符，丢弃重下：" + r.target.getName());
             st.discard();
             part.delete();
             st = null;
         }
         if (st == null) {
-            st = ResumeState.fresh(r.target, probe.total,
-                    probe.etag, probe.rangeSupported ? unit : probe.total);
+            st = ResumeState.fresh(r.target, probed.probe.total, probed.probe.etag,
+                    probed.source.id,
+                    probed.probe.rangeSupported ? unit : probed.probe.total);
             part.delete();
         }
 
-        final AtomicLong done = new AtomicLong(st.completedBytes());
-        l.onProgress(done.get(), probe.total);
+        AtomicLong done = new AtomicLong(st.completedBytes());
+        l.onProgress(done.get(), probed.probe.total);
 
         try (RandomAccessFile raf = new RandomAccessFile(part, "rw")) {
-            raf.setLength(probe.total);
+            raf.setLength(probed.probe.total);
             FileChannel ch = raf.getChannel();
-            long transferred = runChunks(r, st, ch, probe, l, c, done);
-            // 提交之前先把数据落盘：先 rename 后 fsync 的话，掉电会留下一个
-            // 名字正确但内容不全的文件，而 .meta 已经删了——比没下载还糟。
+            long moved = runChunks(r, set, st, ch, probed, l, c, done);
+            // 提交前先落盘：先 rename 后 fsync 的话，掉电会留下一个名字正确但内容
+            // 不全的文件，而 .meta 已经删了——比没下载还糟。
             ch.force(true);
-            commit(r, st, part, probe, l);
-            return new Result(probe.total, probe.etag, st.allVerified(), transferred);
+            commit(r, st, part, probed.probe, l);
+            return new Result(probed.probe.total, probed.probe.etag, st.allVerified(), moved);
         }
+    }
+
+    /** 单源便利入口。 */
+    public Result download(Request r, String url, Listener l, Cancellation c) throws IOException {
+        return download(r, SourceSet.single(url), l, c);
+    }
+
+    // ── 内部 ────────────────────────────────────────────────────────
+
+    private static final class Probed {
+        final Source source; final Probe probe;
+        Probed(Source s, Probe p) { source = s; probe = p; }
+    }
+
+    /** 依次探，第一条成功的说了算。全挂就把每条的原因都带出来。 */
+    private Probed probeAny(String key, SourceSet set, Cancellation c) throws IOException {
+        List<Source> avail = set.available();
+        if (avail.isEmpty()) throw new IOException("没有可用的源");
+        StringBuilder why = new StringBuilder();
+        for (Source s : avail) {
+            try {
+                return new Probed(s, engine.probe(s.urlFor(key), c));
+            } catch (Exception e) {
+                why.append("\n  ").append(s.id).append(": ").append(e.getMessage());
+            }
+        }
+        throw new IOException("所有源都探测失败：" + why);
     }
 
     private long chooseUnit(Request r, Probe probe) {
@@ -109,53 +158,35 @@ public final class Downloader {
         return Math.max(MIN_UNIT, (probe.total + n - 1) / n);
     }
 
-    private long runChunks(Request r, ResumeState st, FileChannel ch, Probe probe,
-                           Listener l, Cancellation c, AtomicLong done)
+    private long runChunks(Request r, SourceSet set, ResumeState st, FileChannel ch,
+                           Probed probed, Listener l, Cancellation c, AtomicLong done)
             throws IOException {
         List<Integer> todo = st.pending();
         if (todo.isEmpty()) return 0;
 
-        final AtomicLong transferred = new AtomicLong();
-        final AtomicReference<Throwable> firstError = new AtomicReference<>();
-        final long t0 = System.nanoTime();
+        AtomicLong transferred = new AtomicLong();
+        AtomicReference<Throwable> firstError = new AtomicReference<>();
+        long t0 = System.nanoTime();
         int threads = Math.min(maxConcurrent, todo.size());
-        ExecutorService pool = Executors.newFixedThreadPool(threads, runnable -> {
-            Thread t = new Thread(runnable, "msdl-chunk");
+        ExecutorService pool = Executors.newFixedThreadPool(threads, run -> {
+            Thread t = new Thread(run, "anabranch-chunk");
             t.setDaemon(true);
             return t;
         });
         try {
             List<Future<?>> fs = new ArrayList<>();
-            for (final int idx : todo) {
+            for (int idx : todo) {
+                final ChunkRef ref = new ChunkRef(idx, st.startOf(idx), st.endOf(idx));
                 fs.add(pool.submit(() -> {
                     if (c.isCancelled() || firstError.get() != null) return;
                     try {
-                        long s = st.startOf(idx), e = st.endOf(idx);
-                        engine.fetchRange(urlFor(r, idx), s, e,
-                                new PositionedChannel(ch, s), l, c);
-                        st.mark(idx, ResumeState.DONE);
-
-                        if (r.integrity != null && r.integrity.hasChunks()) {
-                            String want = r.integrity.hashFor(idx);
-                            if (want != null) {
-                                String got = sha256Of(ch, s, e - s + 1);
-                                if (!want.equalsIgnoreCase(got)) {
-                                    // 验不过就退回 PENDING：下一轮（或下次启动）重下这一块。
-                                    // 标成 DONE 会让坏数据一路混到最后的整份校验，那时已经
-                                    // 分不清是哪一块坏的了。
-                                    st.mark(idx, ResumeState.PENDING);
-                                    l.onChunkVerifyFailed(idx, want, got);
-                                    throw new IOException("第 " + idx + " 块校验不通过");
-                                }
-                                st.mark(idx, ResumeState.VERIFIED);
-                            }
-                        }
-                        long n = st.endOf(idx) - st.startOf(idx) + 1;
+                        fetchOneChunk(r, set, st, ch, ref, l, c);
+                        long n = ref.length();
                         transferred.addAndGet(n);
                         long soFar = done.addAndGet(n);
                         st.persist();
-                        l.onChunkDone(idx, s, e);
-                        l.onProgress(soFar, probe.total);
+                        l.onChunkDone(ref.index, ref.start, ref.endInclusive);
+                        l.onProgress(soFar, probed.probe.total);
                         double sec = (System.nanoTime() - t0) / 1e9;
                         if (sec > 0.2) l.onSpeed(transferred.get() / sec);
                     } catch (Throwable t) {
@@ -184,8 +215,66 @@ public final class Downloader {
         return transferred.get();
     }
 
-    private void commit(Request r, ResumeState st, File part,
-                        Probe probe, Listener l) throws IOException {
+    /**
+     * 取一个分片，带重试与切源。
+     *
+     * <p>重试循环放在<b>分片粒度</b>而不是整轮粒度：一块失败只影响这一块，
+     * 别的线程还在正常跑。第 1 步没有这一层，一块失败就整轮失败——有 .meta 兜底
+     * 所以不丢进度，但用户看到的是「下着下着就报错了」。
+     */
+    private void fetchOneChunk(Request r, SourceSet set, ResumeState st, FileChannel ch,
+                               ChunkRef ref, Listener l, Cancellation c) throws IOException {
+        Throwable last = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS_PER_CHUNK; attempt++) {
+            if (c.isCancelled()) throw new IOException("已取消");
+            List<Source> avail = set.available();
+            if (avail.isEmpty()) {
+                throw new IOException("所有源都已被禁用，" + ref + " 无处可取", last);
+            }
+            Source s = set.policy().pick(avail, set.stats(), ref);
+            long t0 = System.nanoTime();
+            set.onStart(s);
+            try {
+                engine.fetchRange(s.urlFor(r.key), ref.start, ref.endInclusive,
+                        new PositionedChannel(ch, ref.start), l, c);
+                st.mark(ref.index, ResumeState.DONE);
+
+                if (r.integrity != null && r.integrity.hasChunks()) {
+                    String want = r.integrity.hashFor(ref.index);
+                    if (want != null) {
+                        String got = sha256Of(ch, ref.start, ref.length());
+                        if (!want.equalsIgnoreCase(got)) {
+                            // 退回 PENDING：这一块要重下。标成 DONE 会让坏数据一路混到
+                            // 最后的整份校验，那时已经分不清是哪一块坏的了。
+                            st.mark(ref.index, ResumeState.PENDING);
+                            l.onChunkVerifyFailed(ref.index, want, got);
+                            throw new IOException("第 " + ref.index + " 块校验不通过（源 "
+                                    + s.id + "）");
+                        }
+                        st.mark(ref.index, ResumeState.VERIFIED);
+                    }
+                }
+                set.onSuccess(s, ref.length(), System.nanoTime() - t0);
+                return;
+            } catch (Throwable e) {
+                set.onFailure(s);
+                last = e;
+                if (c.isCancelled()) throw new IOException("已取消");
+                Policy.Decision d = set.policy().onFailure(s, ref, e, attempt, set.stats());
+                log.log("[" + ref + "] 源 " + s.id + " 第 " + attempt + " 次失败 → " + d, e);
+                l.onSourceSwitch(s, null, ref, e);
+                if (d == Policy.Decision.ABORT) break;
+                if (d == Policy.Decision.DISABLE_SOURCE) set.disable(s);
+                // RETRY_SAME / SWITCH_SOURCE 都是继续循环——具体挑谁交给下一轮 pick，
+                // 因为「同一条源」在被禁用之后可能已经不可选了。
+            }
+        }
+        throw last instanceof IOException ? (IOException) last
+                : new IOException(ref + " 取不回来", last);
+    }
+
+    private void commit(Request r, ResumeState st, File part, Probe probe, Listener l)
+            throws IOException {
         if (!st.isComplete()) throw new IOException("仍有未完成的块，不提交");
 
         if (r.integrity != null && r.integrity.wholeSha256 != null) {
@@ -231,9 +320,9 @@ public final class Downloader {
     /**
      * 把「顺序写」翻译成「从 base 起的定位写」。
      *
-     * <p>{@link FileChannel#write(ByteBuffer, long)} 是带位置的写，不动通道自身的
-     * position，因此多个线程可以共用同一个 FileChannel 各写各的区间——不用每个
-     * worker 开一个文件句柄，也不用加锁。
+     * <p>{@link FileChannel#write(ByteBuffer, long)} 不动通道自身的 position，
+     * 所以多个线程可以共用一个 FileChannel 各写各的区间——不用每个 worker 开一个
+     * 文件句柄，也不用加锁。
      */
     static final class PositionedChannel implements WritableByteChannel {
         private final FileChannel ch;
