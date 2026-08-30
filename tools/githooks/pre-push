@@ -1,0 +1,15 @@
+#!/bin/sh
+# 启动层：只负责找一个能用的 Python 3，判据在同目录的 .py 里。
+#
+# 找不到解释器时**放行并提示，不是拦下**——缺个 Python 不该让整个仓库提交不了。
+# 钩子不能是 .bat：git 找的是无扩展名的同名文件，在 Windows 上也用自带的 sh 执行。
+dir=$(dirname "$0")
+for py in python3 python py; do
+  if command -v "$py" >/dev/null 2>&1; then
+    if "$py" -c 'import sys; sys.exit(0 if sys.version_info[0]==3 else 1)' 2>/dev/null; then
+      exec "$py" "$dir/pre_push.py" "$@"
+    fi
+  fi
+done
+echo "提示：找不到 Python 3，跳过提交信息检查（规则见 AGENTS.md §1）。" >&2
+exit 0

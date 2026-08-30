@@ -99,6 +99,19 @@ etag 不一致只当提示**——尺寸不同才是真的不同。
 - **目录 fsync** 用的是「建一个临时文件再 sync」的土办法，Java 没有直接 API。
   Android 上可以走 `ParcelFileDescriptor`，届时在 android artifact 里覆盖。
 
+## 参与开发
+
+```bash
+sh tools/install-hooks.sh     # 只有 Agent 没碰过这份克隆时才需要
+sh tools/run-checks.sh        # 编译 + core 边界 + 46 项测试
+```
+
+规范见 [CONTRIBUTING.md](CONTRIBUTING.md)；AI 协作者的硬约束见
+[CLAUDE.md](CLAUDE.md) 与 [AGENTS.md](AGENTS.md)。
+
+`tools/check-core-boundaries.py` 守着 core 的四条边界：不碰 Android、零第三方依赖、
+不用 API 24+ 才有的运行时类库、分层不倒挂。四条的理由写在那个脚本开头。
+
 ## 许可
 
 建议 **Apache-2.0**——比 MIT 多一条专利授权，商业项目敢用。

@@ -1,0 +1,4 @@
+tools/githooks/* text eol=lf
+tools/*.sh text eol=lf
+*.java text eol=lf
+*.py text eol=lf
