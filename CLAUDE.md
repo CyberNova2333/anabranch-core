@@ -29,7 +29,7 @@
 非 `java.*` 的包。
 
 理由不是洁癖：这个库敢说自己正确，靠的是「真起本地 HTTP 服务器、真下文件」的
-50 项测试；一旦掺进 `Context` / `Handler` / `SharedPreferences`，就再也没法脱机
+63 项测试；一旦掺进 `Context` / `Handler` / `SharedPreferences`，就再也没法脱机
 验证。Android 那层接线（前台服务、通知、WorkManager）属于**另一个 artifact**。
 
 需要别的 HTTP 实现？自己写一个 `Engine`——那正是把 `Engine` 抽出来的意义。
@@ -78,7 +78,7 @@ aria2 是 GPLv2+，静态链接后分发二进制有源码提供义务。把它�
 
 ### 6. 测试不许 mock 掉网络
 
-两套测试都真起 `com.sun.net.httpserver` 的本地服务器、真传字节。多源那套起三台，
+三套测试都真起 `com.sun.net.httpserver` 的本地服务器、真传字节。多源那套起三台，
 可以随时把某台切成「全挂 / 慢 / 服务 N 块后掉线」。
 
 这不是形式主义——这个库要防的失败模式（服务端少给字节、镜像版本不一致、
@@ -127,7 +127,7 @@ aria2 是 GPLv2+，静态链接后分发二进制有源码提供义务。把它�
 ### 提交前跑一遍
 
 ```bash
-sh tools/run-checks.sh      # Java 8 编译 → 全量编译 → core 边界 → 两套测试（约 40 秒）
+sh tools/run-checks.sh      # Java 8 编译 → 全量编译 → core 边界 → 三套测试（约 1 分钟）
 ```
 
 **「javac 过了」不等于「能提交」。** 这个库的正确性几乎全在测试里，编译器一点忙

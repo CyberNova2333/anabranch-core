@@ -8,7 +8,7 @@
 ```bash
 git clone …/anabranch-core && cd anabranch-core
 sh tools/install-hooks.sh        # 只有 Agent 没碰过这份克隆时才需要
-sh tools/run-checks.sh           # 编译 + core 边界 + 50 项测试，约 40 秒
+sh tools/run-checks.sh           # 编译 + core 边界 + 63 项测试，约 1 分钟
 ```
 
 没有 Gradle、没有 Maven、没有依赖下载。`javac` 和 `python3` 就够了——这是刻意的，
