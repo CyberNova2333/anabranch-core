@@ -25,5 +25,6 @@ python3 tools/check-core-boundaries.py
 echo "── 测试 ──"
 java -Dstdout.encoding=UTF-8 -cp "$out" SingleSourceTest
 java -Dstdout.encoding=UTF-8 -cp "$out" MultiSourceTest
+java -Dstdout.encoding=UTF-8 -cp "$out" ThrottleTest
 
 echo "── 全部通过 ──"

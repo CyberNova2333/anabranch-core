@@ -35,6 +35,7 @@ public final class Downloader {
     private final int defaultChunks;
     private final int maxConcurrent;
     private final long chunkRetryBudgetMs;
+    private final RateLimiter limiter;
     private final Logger log;
 
     private Downloader(Builder b) {
@@ -42,6 +43,7 @@ public final class Downloader {
         this.defaultChunks = b.defaultChunks;
         this.maxConcurrent = b.maxConcurrent;
         this.chunkRetryBudgetMs = b.chunkRetryBudgetMs;
+        this.limiter = RateLimiter.perSecond(b.bytesPerSecond);
         this.log = b.log;
     }
 
@@ -52,6 +54,7 @@ public final class Downloader {
         private int defaultChunks = 8;
         private int maxConcurrent = 4;
         private long chunkRetryBudgetMs = 60_000;
+        private long bytesPerSecond = 0;
         private Logger log = Logger.NONE;
 
         public Builder engine(Engine e) { this.engine = e; return this; }
@@ -70,6 +73,19 @@ public final class Downloader {
          * 慢不等于坏。
          */
         public Builder chunkRetryBudgetMs(long ms) { this.chunkRetryBudgetMs = ms; return this; }
+
+        /**
+         * 整次下载的限速（字节/秒）；{@code <=0} 表示不限（默认）。
+         *
+         * <p>限的是**整次下载**，不是每个分片——每个分片各限一份的话，并发数一变
+         * 实际速率就跟着变：用户设了 1MB/s，开 4 个分片就成了 4MB/s。
+         *
+         * <p>实现上限速做在**写入侧**（包装交给 Engine 的那个 channel），因此对任何
+         * {@link Engine} 实现都自动生效，也不用把限速的概念塞进 Engine 接口。
+         * 代价是引擎可能已经从 socket 读进了缓冲区才被挡住——这层背压不是精确的，
+         * 但对「别把带宽吃光」这个目的足够。
+         */
+        public Builder bytesPerSecond(long n) { this.bytesPerSecond = n; return this; }
         public Builder logger(Logger l) { this.log = l == null ? Logger.NONE : l; return this; }
         public Downloader build() { return new Downloader(this); }
     }
@@ -128,6 +144,9 @@ public final class Downloader {
         AtomicLong done = new AtomicLong(st.completedBytes());
         l.onProgress(done.get(), probed.probe.total);
 
+        // 服务端不支持 Range 时根本没法续传，留下的 .part/.meta 是纯粹的垃圾：
+        // 下一次只能从头再来，而这两个文件还占着与目标文件同样大的空间。
+        boolean resumable = r.allowResume && probed.probe.rangeSupported;
         try (RandomAccessFile raf = new RandomAccessFile(part, "rw")) {
             raf.setLength(probed.probe.total);
             FileChannel ch = raf.getChannel();
@@ -137,6 +156,12 @@ public final class Downloader {
             ch.force(true);
             commit(r, st, part, probed.probe, l);
             return new Result(probed.probe.total, probed.probe.etag, st.allVerified(), moved);
+        } catch (IOException | RuntimeException e) {
+            if (!resumable) {
+                st.discard();
+                part.delete();
+            }
+            throw e;
         }
     }
 
@@ -184,7 +209,7 @@ public final class Downloader {
 
         AtomicLong transferred = new AtomicLong();
         AtomicReference<Throwable> firstError = new AtomicReference<>();
-        long t0 = System.nanoTime();
+        SpeedMeter meter = new SpeedMeter();
         int threads = Math.min(maxConcurrent, todo.size());
         ExecutorService pool = Executors.newFixedThreadPool(threads, run -> {
             Thread t = new Thread(run, "anabranch-chunk");
@@ -198,15 +223,14 @@ public final class Downloader {
                 fs.add(pool.submit(() -> {
                     if (c.isCancelled() || firstError.get() != null) return;
                     try {
-                        fetchOneChunk(r, set, st, ch, ref, l, c);
+                        fetchOneChunk(r, set, st, ch, ref, l, c, meter);
                         long n = ref.length();
                         transferred.addAndGet(n);
                         long soFar = done.addAndGet(n);
                         st.persist();
                         l.onChunkDone(ref.index, ref.start, ref.endInclusive);
                         l.onProgress(soFar, probed.probe.total);
-                        double sec = (System.nanoTime() - t0) / 1e9;
-                        if (sec > 0.2) l.onSpeed(transferred.get() / sec);
+                        l.onSpeed(meter.bytesPerSec());
                     } catch (Throwable t) {
                         firstError.compareAndSet(null, t);
                     }
@@ -241,7 +265,8 @@ public final class Downloader {
      * 所以不丢进度，但用户看到的是「下着下着就报错了」。
      */
     private void fetchOneChunk(Request r, SourceSet set, ResumeState st, FileChannel ch,
-                               ChunkRef ref, Listener l, Cancellation c) throws IOException {
+                               ChunkRef ref, Listener l, Cancellation c, SpeedMeter meter)
+            throws IOException {
         Throwable last = null;
         // 白费掉的时间：失败尝试本身 + 退避等待。正在正常传输的尝试不计入，
         // 也不会被打断——慢不等于坏。
@@ -262,7 +287,7 @@ public final class Downloader {
             set.onStart(s);
             try {
                 engine.fetchRange(s.urlFor(r.key), ref.start, ref.endInclusive,
-                        new PositionedChannel(ch, ref.start), l, c);
+                        new PositionedChannel(ch, ref.start, limiter, meter, c), l, c);
                 st.mark(ref.index, ResumeState.DONE);
 
                 if (r.integrity != null && r.integrity.hasChunks()) {
@@ -378,16 +403,47 @@ public final class Downloader {
      */
     static final class PositionedChannel implements WritableByteChannel {
         private final FileChannel ch;
+        private final RateLimiter limiter;
+        private final SpeedMeter meter;
+        private final Cancellation cancel;
         private long pos;
         private volatile boolean open = true;
 
-        PositionedChannel(FileChannel ch, long base) { this.ch = ch; this.pos = base; }
+        PositionedChannel(FileChannel ch, long base, RateLimiter limiter,
+                          SpeedMeter meter, Cancellation cancel) {
+            this.ch = ch;
+            this.pos = base;
+            this.limiter = limiter == null ? RateLimiter.UNLIMITED : limiter;
+            this.meter = meter;
+            this.cancel = cancel == null ? Cancellation.NONE : cancel;
+        }
 
         @Override public int write(ByteBuffer src) throws IOException {
+            int want = src.remaining();
+            if (want <= 0) return 0;
+            if (limiter.isLimited()) {
+                // 只写限速器放行的那么多，剩下的交给引擎的下一次 write。
+                // 一次性等够整个缓冲区的额度会让写入一顿一顿的。
+                int allow = limiter.acquire(want, cancel);
+                if (allow <= 0) throw new IOException("已取消");
+                if (allow < want) {
+                    int keep = src.limit();
+                    src.limit(src.position() + allow);
+                    int n = doWrite(src);
+                    src.limit(keep);
+                    return n;
+                }
+            }
+            return doWrite(src);
+        }
+
+        private int doWrite(ByteBuffer src) throws IOException {
             int n = ch.write(src, pos);
             pos += n;
+            if (meter != null) meter.record(n);
             return n;
         }
+
         @Override public boolean isOpen() { return open; }
         @Override public void close() { open = false; }   // 不关共享通道
     }
