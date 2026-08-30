@@ -28,9 +28,9 @@ jobs:
       matrix:
         java: ['17', '21']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # 需要拿到 before..after 这一段的完整信息，所以不能浅克隆
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
