@@ -86,6 +86,27 @@ aria2 是 GPLv2+，静态链接后分发二进制有源码提供义务。把它�
 
 ---
 
+## bundle 导入与签名约定
+
+日常流程是在**另一台机器/另一个 Agent** 里产出 commit，打成 bundle 送进来，再在本机导入
+推送。已固化 `tools/rebase-bundle-to-main.sh`，导入时它会：
+
+- **始终以当前已验证的 `origin/main` 为基线**，把 bundle 当作下一条 commit，绝不覆盖已验证历史；
+- 用**本机 `user.signingkey` 重新签名**，保证 GitHub 显示 `Verified`——生成端自带的签名 key
+  通常没注册进本账号，GitHub 会判 `unknown_key` → `Unverified`；
+- push 前做 tree 一致性 + 本地验签，push 用 `--force-with-lease` 防竞态。
+
+**出包端约定（保持一致基线，可省去每次重放）：**
+
+- **bundle 基线取当前 `origin/main`**：出包前先 `git fetch origin`，再基于 `origin/main` 出包。
+  这样 bundle tip 是 origin/main 的子代，导入只需重签、无需 cherry-pick。
+- 允许增量/thin bundle：`git bundle create f.bundle origin/main..HEAD`，脚本接受 prerequisite 基线。
+- 生成端的签名 key 不要求是本机这把；导入端会自动用本机 key 重签。
+
+导入：`sh tools/rebase-bundle-to-main.sh <bundle 文件> --push`（先不带 `--push` 做 dry-run 检视）。
+
+---
+
 ## 提交约定
 
 - **Conventional Commits 前缀 + 中文描述**：`fix(engine): 修正 Range 被忽略时的误判`。
