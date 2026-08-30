@@ -4,3 +4,5 @@ build/
 .gradle/
 .idea/
 *.iml
+__pycache__/
+*.pyc
