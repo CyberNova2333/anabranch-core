@@ -1,0 +1,78 @@
+name: 检查
+
+# 只在 main 上跑。「开个分支看看 CI 过不过」会把 Actions 额度和注意力一起烧掉，
+# 而且分支上的绿灯不代表 main 上是绿的——见 AGENTS.md §0 规则三。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支上后推的把先推的顶掉：CI 是用来看「现在的 main 好不好」的，
+# 不是给每一次中间状态都发一张成绩单。
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: 编译与测试
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # 跑两个 JDK：17 是当下的长期支持线，21 是较新的那条。core 本身按
+      # --release 8 编译（见 tools/run-checks.sh），这里换 JDK 是为了确认
+      # **测试**在不同运行时上行为一致——尤其是并发与超时那几条。
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: 全套检查
+        run: sh tools/run-checks.sh
+
+      # 涉及并发与真实超时的用例在负载高的 runner 上最容易露馅。本地约定是
+      # 改了这类逻辑要连跑四轮（AGENTS.md §2），CI 这边固定再跑两轮兜底——
+      # 一次绿不能说明不 flaky。
+      - name: 复跑（抓时序抖动）
+        run: |
+          for i in 1 2; do
+            echo "── 第 $i 轮 ──"
+            sh tools/run-checks.sh > /dev/null
+          done
+          echo "两轮复跑通过"
+
+  commit-messages:
+    name: 提交信息
+    runs-on: ubuntu-latest
+    steps:
+      # 需要拿到 before..after 这一段的完整信息，所以不能浅克隆
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 只查**本次推送新增**的提交，与 pre-push 钩子同一个语义：历史不翻旧账。
+      # 对已经在远端的提交报错既没意义（改不了），又会让人学会无脑加逃生口。
+      #
+      # github.event.before 在新建分支时是全零；那种情况下没有「新增区间」可言，
+      # 直接跳过——首次推送的历史同样属于既成事实。
+      - name: 检查本次推送新增的提交信息
+        run: |
+          before='${{ github.event.before }}'
+          after='${{ github.sha }}'
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            echo "新建分支或拿不到 before，跳过（历史不翻旧账）"
+            exit 0
+          fi
+          if ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+            echo "before=$before 在本地不可达（多半是强推），跳过"
+            exit 0
+          fi
+          python3 tools/check-commit-messages.py "$before..$after"

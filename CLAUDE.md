@@ -29,7 +29,7 @@
 非 `java.*` 的包。
 
 理由不是洁癖：这个库敢说自己正确，靠的是「真起本地 HTTP 服务器、真下文件」的
-46 项测试；一旦掺进 `Context` / `Handler` / `SharedPreferences`，就再也没法脱机
+50 项测试；一旦掺进 `Context` / `Handler` / `SharedPreferences`，就再也没法脱机
 验证。Android 那层接线（前台服务、通知、WorkManager）属于**另一个 artifact**。
 
 需要别的 HTTP 实现？自己写一个 `Engine`——那正是把 `Engine` 抽出来的意义。
@@ -106,7 +106,7 @@ aria2 是 GPLv2+，静态链接后分发二进制有源码提供义务。把它�
 ### 提交前跑一遍
 
 ```bash
-sh tools/run-checks.sh      # 编译 → core 边界 → 两套测试
+sh tools/run-checks.sh      # Java 8 编译 → 全量编译 → core 边界 → 两套测试（约 40 秒）
 ```
 
 **「javac 过了」不等于「能提交」。** 这个库的正确性几乎全在测试里，编译器一点忙
@@ -133,6 +133,12 @@ sh tools/install-hooks.sh
 | `commit-msg` | 标题非「前缀+中文」/ 缺 `Co-authored-by` / 缺「文档:」 | 信息里**顶格独占一行**写 `[skip-hooks]` |
 | `pre-push` | 本次推送**新增**的提交信息不合规（在别处提交再推进来的，`commit-msg` 看不见） | `SKIP_MSG_HOOK=1 git push` |
 | `agent-guard.py` | `--no-verify` 与 `-c core.hooksPath=…`（绕过上面两个且不留痕迹） | 无——请改用上面两个逃生口 |
+| CI（`.github/workflows/checks.yml`） | 本次推送新增的提交信息；跑在服务端，没有本地配置可绕 | 只认 `[skip-hooks]` |
+
+查提交信息的那三道是有分工的：`commit-msg` 只在装了钩子的克隆里生效，`pre-push` 有
+`SKIP_MSG_HOOK=1` 这个口子，CI 是最后一道。所以 `SKIP_MSG_HOOK=1` 的真实语义是
+**「先让我推上去，CI 那边我认」**，而不是「这条不用守规矩」。真要在历史里留一条
+不合规的信息，正规做法是写 `[skip-hooks]`——那是记录在案、看得见的豁免。
 
 两个 git 钩子分两层：`commit-msg` / `pre-push` 是 POSIX sh 的启动层，只负责找一个
 能用的 Python 3；实现分别在 `commit_msg.py` / `pre_push.py`，判据在共用的

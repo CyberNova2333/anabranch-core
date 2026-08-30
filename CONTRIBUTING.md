@@ -8,7 +8,7 @@
 ```bash
 git clone …/anabranch-core && cd anabranch-core
 sh tools/install-hooks.sh        # 只有 Agent 没碰过这份克隆时才需要
-sh tools/run-checks.sh           # 编译 + core 边界 + 46 项测试，几秒钟
+sh tools/run-checks.sh           # 编译 + core 边界 + 50 项测试，约 40 秒
 ```
 
 没有 Gradle、没有 Maven、没有依赖下载。`javac` 和 `python3` 就够了——这是刻意的，
@@ -74,6 +74,17 @@ Co-authored-by: Claude <noreply@anthropic.com>
 
 新增行为时，问自己「它坏掉的时候是什么样子」，然后写那个用例——而不是写
 「它正常时是什么样子」。
+
+## CI
+
+`.github/workflows/checks.yml` 在 push 到 `main` 时跑，两个 job：
+
+- **编译与测试**：JDK 17 与 21 各跑一遍 `tools/run-checks.sh`，然后**再复跑两轮**
+  ——涉及并发与真实超时的用例在负载高的 runner 上最容易露馅，一次绿不能说明不 flaky。
+- **提交信息**：只查本次推送新增的提交，与 `pre-push` 同一个语义（历史不翻旧账）。
+
+CI 跑的就是你本地那条命令，没有第二套配置——所以本地绿了 CI 基本不会红，
+反过来也一样。
 
 ## 为什么没有构建系统
 

@@ -114,7 +114,7 @@ etag 不一致只当提示**——尺寸不同才是真的不同。
 
 ```bash
 sh tools/install-hooks.sh     # 只有 Agent 没碰过这份克隆时才需要
-sh tools/run-checks.sh        # 编译 + core 边界 + 46 项测试
+sh tools/run-checks.sh        # 编译 + core 边界 + 50 项测试（约 40 秒）
 ```
 
 规范见 [CONTRIBUTING.md](CONTRIBUTING.md)；AI 协作者的硬约束见

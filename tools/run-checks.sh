@@ -8,7 +8,15 @@ cd "$(git rev-parse --show-toplevel)"
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 
-echo "── 编译 ──"
+echo "── core 按 Java 8 编译 ──"
+# 这条比任何静态检查都强：minSdk 21 的实际含义就是「core 的字节码必须是 Java 8
+# 能吃下的」。--release 8 会连**类库**一起限制住（不只是语法），所以误用
+# java.util.function 这类 API 24+ 才有的东西会在这里当场编译失败。
+# tools/check-core-boundaries.py 仍然有用——它管的是 android.*、第三方依赖与分层，
+# 那三条 --release 看不见。
+javac --release 8 -nowarn -d "$out/core8" src/io/anabranch/*.java
+
+echo "── 编译（含测试）──"
 javac -nowarn -d "$out" src/io/anabranch/*.java test/*.java
 
 echo "── core 边界 ──"

@@ -36,7 +36,7 @@ CI 重跑）在这里全是净损失。
 
 ### 规则三：不要用分支触发 CI
 
-CI 应该在 `main` 上跑。「开个分支看看 CI 过不过」会让 Actions 额度和你的注意力
+CI（`.github/workflows/checks.yml`）只在 `main` 上跑，这是刻意配的。「开个分支看看 CI 过不过」会让 Actions 额度和你的注意力
 一起被烧掉，而且分支上的绿灯不代表 `main` 上是绿的。
 
 本地跑 `sh tools/run-checks.sh`——它与 CI 等价，约 40 秒出结果。
@@ -117,6 +117,11 @@ sh tools/run-checks.sh
    无 API 24+ 运行时类库、分层无倒挂（四条的理由见 `CLAUDE.md` 铁律 1–3）；
 3. **两套测试**：`SingleSourceTest`（21 项）+ `MultiSourceTest`（29 项）。
 
+第 1 步里有一条容易被忽略的：`javac --release 8` 单独编一遍 core。这比任何静态
+检查都强——minSdk 21 的实际含义就是「core 的字节码必须是 Java 8 能吃下的」，
+而 `--release` 会连**类库**一起限制住，误用 `java.util.function` 这类 API 24+
+才有的东西会在这里当场编译失败。
+
 这个库的正确性几乎全在第 3 步里。它要防的失败模式——服务端少给字节、镜像版本
 不一致、连接卡住不回数据——编译器一个都看不见。
 
@@ -159,9 +164,13 @@ for i in 1 2 3 4; do sh tools/run-checks.sh >/dev/null && echo "第 $i 轮 ok"; 
 # （行内提一句不算，缩进也不算——后者是 git commit -v 的 diff 上下文行的样子）
 [skip-hooks]
 
-# 跳过 pre-push 的提交信息检查：
+# 跳过 pre-push 的提交信息检查（**CI 仍然会查**，见下）：
 SKIP_MSG_HOOK=1 git push
 ```
+
+`SKIP_MSG_HOOK=1` 只跳过本地那一道。CI 的「提交信息」job 会再查一遍本次推送新增
+的提交，跑在服务端、没有本地配置可绕。所以它的意思是「先让我推上去，CI 那边我认」。
+要在历史里留一条不合规的信息，写 `[skip-hooks]`——两边一视同仁地认它。
 
 `agent-guard.py` 直接拦 `--no-verify` 与 `-c core.hooksPath=…`——那两条是绕过钩子
 本身且不留痕迹，上面两个逃生口至少会在输出里留下痕迹。
