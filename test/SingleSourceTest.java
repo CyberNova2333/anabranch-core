@@ -69,8 +69,7 @@ public class SingleSourceTest {
     static void testPlainDownload(String url, File dir) throws Exception {
         File out = new File(dir, "plain.bin");
         List<Long> progress = new ArrayList<>();
-        Result r = dl(8).download(
-                new Request(url, out, null, 8, true),
+        Result r = dl(8).download(new Request("file.bin", out, null, 8, true), SourceSet.single(url),
                 new Listener() {
                     public void onProgress(long soFar, long total) { progress.add(soFar); }
                 }, Cancellation.NONE);
@@ -88,14 +87,14 @@ public class SingleSourceTest {
         CUT_AFTER.set(1000);                 // 每块只发 1000 字节就断
         boolean threw = false;
         try {
-            dl(6).download(new Request(url, out, null, 6, true),
+            dl(6).download(new Request("file.bin", out, null, 6, true), SourceSet.single(url),
                     Listener.NONE, Cancellation.NONE);
         } catch (IOException e) { threw = true; }
         CUT_AFTER.set(0);
         check("中途断开会抛错而不是悄悄成功", threw, "");
         check("失败后留下 .meta 供续传", new File(out.getPath() + ".meta").exists(), "");
 
-        Result r = dl(6).download(new Request(url, out, null, 6, true),
+        Result r = dl(6).download(new Request("file.bin", out, null, 6, true), SourceSet.single(url),
                 Listener.NONE, Cancellation.NONE);
         check("续传后内容一致", sameBytes(out, BODY), "长度 " + out.length());
         check("续传结果长度正确", r.totalBytes == BODY.length, "" + r.totalBytes);
@@ -117,8 +116,8 @@ public class SingleSourceTest {
         final int[] badIndex = {-1};
         boolean threw = false;
         try {
-            dl(4).download(
-                    new Request(url, out, new Integrity(unit, hashes, null), 0, true),
+            dl(4).download(new Request("file.bin", out, new Integrity(unit, hashes, null), 0, true),
+                    SourceSet.single(url),
                     new Listener() {
                         public void onChunkVerifyFailed(int i, String w, String g) { badIndex[0] = i; }
                     }, Cancellation.NONE);
@@ -128,8 +127,8 @@ public class SingleSourceTest {
         check("坏块不会被提交成成品", !out.exists(), "");
 
         hashes[2] = good;                      // 换回真摘要，应当能下完
-        Result r = dl(4).download(
-                new Request(url, out, new Integrity(unit, hashes, sha256(BODY, 0, BODY.length)), 0, true),
+        Result r = dl(4).download(new Request("file.bin", out, new Integrity(unit, hashes, sha256(BODY, 0, BODY.length)), 0, true),
+                SourceSet.single(url),
                 Listener.NONE, Cancellation.NONE);
         check("摘要正确时能下完", sameBytes(out, BODY), "");
         check("Result.chunkVerified 为真", r.chunkVerified, "" + r.chunkVerified);
@@ -139,14 +138,14 @@ public class SingleSourceTest {
     static void testEtagChangeDiscardsResume(String url, File dir) throws Exception {
         File out = new File(dir, "etag.bin");
         CUT_AFTER.set(1000);
-        try { dl(6).download(new Request(url, out, null, 6, true),
+        try { dl(6).download(new Request("file.bin", out, null, 6, true), SourceSet.single(url),
                 Listener.NONE, Cancellation.NONE); } catch (IOException ignored) {}
         CUT_AFTER.set(0);
         check("有残留的续传状态", new File(out.getPath() + ".meta").exists(), "");
 
         ETAG = "\"v2\"";                        // 服务端换了内容
         try {
-            Result r = dl(6).download(new Request(url, out, null, 6, true),
+            Result r = dl(6).download(new Request("file.bin", out, null, 6, true), SourceSet.single(url),
                     Listener.NONE, Cancellation.NONE);
             check("etag 变了仍能正确下完", sameBytes(out, BODY), "");
             check("下载量说明是整份重下而非续传",
@@ -159,7 +158,7 @@ public class SingleSourceTest {
         SUPPORT_RANGE.set(false);
         try {
             File out = new File(dir, "norange.bin");
-            Result r = dl(8).download(new Request(url, out, null, 8, true),
+            Result r = dl(8).download(new Request("file.bin", out, null, 8, true), SourceSet.single(url),
                     Listener.NONE, Cancellation.NONE);
             check("不支持 Range 时能整份下完", sameBytes(out, BODY), "长度 " + out.length());
             check("不支持 Range 时长度正确", r.totalBytes == BODY.length, "" + r.totalBytes);
@@ -168,8 +167,16 @@ public class SingleSourceTest {
 
     // ───────────────────────── 支撑 ─────────────────────────
 
+    /**
+     * 用**短超时**的引擎。默认 30s 读超时在生产里合理，但测试里模拟「服务端截断
+     * 但不断开连接」时，每次失败都要熬满超时；加了块级重试之后就是 attempts 倍。
+     * 这不只是测试跑得慢的问题——真实镜像卡住时代价同样会被重试放大，
+     * 所以超时值必须可配，见 HttpEngine 的构造参数。
+     */
     static Downloader dl(int chunks) {
-        return Downloader.newBuilder().defaultChunks(chunks).maxConcurrent(4).build();
+        return Downloader.newBuilder()
+                .engine(new HttpEngine(2000, 1500, "anabranch-test", Logger.NONE))
+                .defaultChunks(chunks).maxConcurrent(4).build();
     }
 
     static void serve(HttpExchange x) throws IOException {

@@ -13,9 +13,10 @@ import java.util.List;
  *
  * <h3>格式是显式且带版本号的</h3>
  * <pre>
- * anabranch-meta/1
+ * anabranch-meta/2
  * total=104857600
  * etag="a1b2c3"
+ * source=cdn-a
  * unit=1048576
  * count=100
  * state=VVVVDDPPPP……
@@ -26,10 +27,15 @@ import java.util.List;
  * 认不出的版本一律当作「没有续传信息」重来——<b>宁可重下，也不要拿不确定的
  * 状态去拼文件</b>。
  *
- * <h3>etag 变了必须整份作废</h3>
+ * <h3>etag 变了必须整份作废——但只在同一条源上比</h3>
  * 服务端换了文件而续传接着往下写，是这类库最经典的静默损坏：长度对得上、
- * 下载「成功」，内容是两个版本的拼接。所以 {@link #matches} 对 etag 不匹配
- * 一律返回 false。
+ * 下载「成功」，内容是两个版本的拼接。所以同源续传时 etag 不匹配一律作废。
+ *
+ * <p>多源之后这件事有个坑：<b>同样的字节在不同服务端上 etag 完全可能不同</b>
+ * （nginx 用 mtime+size、S3 用 md5、CDN 自己再包一层）。若拿 A 源的 etag 去跟
+ * B 源的比，每次换源都会把好好的续传状态判成失效、整份重下。所以 meta 里记下
+ * 「这份 etag 是从哪条源探来的」，只有<b>同一条源</b>再探时才比 etag；跨源时
+ * 退回到只比长度，正确性由逐块摘要兜底。
  */
 final class ResumeState {
 
@@ -37,20 +43,23 @@ final class ResumeState {
     static final char DONE    = 'D';
     static final char VERIFIED= 'V';
 
-    private static final String MAGIC = "anabranch-meta/1";
+    private static final String MAGIC = "anabranch-meta/2";
 
     final long total;
     final String etag;
+    /** 上面那个 etag 是从哪条源探来的。跨源续传时不比 etag，见类注释。 */
+    final String probeSourceId;
     final long unit;
     final int count;
     private final char[] state;
     private final File metaFile;
 
-    private ResumeState(File metaFile, long total, String etag,
+    private ResumeState(File metaFile, long total, String etag, String probeSourceId,
                         long unit, int count, char[] state) {
         this.metaFile = metaFile;
         this.total = total;
         this.etag = etag == null ? "" : etag;
+        this.probeSourceId = probeSourceId == null ? "" : probeSourceId;
         this.unit = unit;
         this.count = count;
         this.state = state;
@@ -59,11 +68,12 @@ final class ResumeState {
     static File partFileFor(File target) { return new File(target.getPath() + ".part"); }
     static File metaFileFor(File target) { return new File(target.getPath() + ".meta"); }
 
-    static ResumeState fresh(File target, long total, String etag, long unit) {
+    static ResumeState fresh(File target, long total, String etag,
+                             String probeSourceId, long unit) {
         int count = (int) ((total + unit - 1) / unit);
         char[] st = new char[count];
         java.util.Arrays.fill(st, PENDING);
-        return new ResumeState(metaFileFor(target), total, etag, unit, count, st);
+        return new ResumeState(metaFileFor(target), total, etag, probeSourceId, unit, count, st);
     }
 
     /** 读不出、版本不认、字段缺失——一律返回 null，由调用方重来。 */
@@ -74,14 +84,15 @@ final class ResumeState {
             byte[] b = new byte[(int) Math.min(mf.length(), 1 << 20)];
             try (RandomAccessFile r = new RandomAccessFile(mf, "r")) { r.readFully(b); }
             String[] lines = new String(b, StandardCharsets.UTF_8).split("\n");
-            if (lines.length < 6 || !MAGIC.equals(lines[0].trim())) return null;
+            if (lines.length < 7 || !MAGIC.equals(lines[0].trim())) return null;
             long total = Long.parseLong(val(lines[1], "total"));
             String etag = val(lines[2], "etag");
-            long unit = Long.parseLong(val(lines[3], "unit"));
-            int count = Integer.parseInt(val(lines[4], "count"));
-            String st = val(lines[5], "state");
+            String src = val(lines[3], "source");
+            long unit = Long.parseLong(val(lines[4], "unit"));
+            int count = Integer.parseInt(val(lines[5], "count"));
+            String st = val(lines[6], "state");
             if (st.length() != count || count <= 0 || unit <= 0) return null;
-            return new ResumeState(mf, total, etag, unit, count, st.toCharArray());
+            return new ResumeState(mf, total, etag, src, unit, count, st.toCharArray());
         } catch (Exception e) {
             return null;   // 任何解析异常都等价于「没有可用的续传信息」
         }
@@ -95,9 +106,12 @@ final class ResumeState {
         return line.substring(i + 1).trim();
     }
 
-    /** 续传前提：总长度一致 <b>且</b> etag 一致（任一为空则只比长度）。 */
-    boolean matches(long total, String etag, long unit) {
+    /** 续传前提：总长度与分块单位一致；etag <b>只在同一条源</b>上比（见类注释）。 */
+    boolean matches(long total, String etag, String probeSourceId, long unit) {
         if (this.total != total || this.unit != unit) return false;
+        boolean sameSource = !this.probeSourceId.isEmpty()
+                && this.probeSourceId.equals(probeSourceId);
+        if (!sameSource) return true;                      // 跨源：只信长度 + 逐块摘要
         if (this.etag.isEmpty() || etag == null || etag.isEmpty()) return true;
         return this.etag.equals(etag);
     }
@@ -141,6 +155,7 @@ final class ResumeState {
         sb.append(MAGIC).append('\n')
           .append("total=").append(total).append('\n')
           .append("etag=").append(etag).append('\n')
+          .append("source=").append(probeSourceId).append('\n')
           .append("unit=").append(unit).append('\n')
           .append("count=").append(count).append('\n')
           .append("state=").append(state).append('\n');

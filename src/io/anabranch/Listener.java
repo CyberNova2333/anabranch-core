@@ -12,5 +12,12 @@ public interface Listener {
     default void onSpeed(double bytesPerSec) {}
     default void onChunkDone(int index, long start, long endInclusive) {}
     default void onChunkVerifyFailed(int index, String expected, String actual) {}
+
+    /**
+     * 某条源在某一分片上失败了。{@code to} 目前恒为 null——下一条源要等下一轮
+     * {@link Policy#pick} 才定，这里报的是「谁失败了」而不是「换成了谁」。
+     * 想知道最终用了哪条，看 {@link #onChunkDone} 与日志。
+     */
+    default void onSourceSwitch(Source from, Source to, ChunkRef chunk, Throwable why) {}
     Listener NONE = new Listener() {};
 }
