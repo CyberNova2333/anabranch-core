@@ -39,7 +39,7 @@ CI 重跑）在这里全是净损失。
 CI 应该在 `main` 上跑。「开个分支看看 CI 过不过」会让 Actions 额度和你的注意力
 一起被烧掉，而且分支上的绿灯不代表 `main` 上是绿的。
 
-本地跑 `sh tools/run-checks.sh`——它与 CI 等价，几秒钟出结果。
+本地跑 `sh tools/run-checks.sh`——它与 CI 等价，约 40 秒出结果。
 
 ---
 
@@ -115,7 +115,7 @@ sh tools/run-checks.sh
 1. **编译** `src/` 与 `test/`；
 2. **`tools/check-core-boundaries.py`**——core 不碰 Android、零第三方依赖、
    无 API 24+ 运行时类库、分层无倒挂（四条的理由见 `CLAUDE.md` 铁律 1–3）；
-3. **两套测试**：`SingleSourceTest`（21 项）+ `MultiSourceTest`（25 项）。
+3. **两套测试**：`SingleSourceTest`（21 项）+ `MultiSourceTest`（29 项）。
 
 这个库的正确性几乎全在第 3 步里。它要防的失败模式——服务端少给字节、镜像版本
 不一致、连接卡住不回数据——编译器一个都看不见。
@@ -128,6 +128,9 @@ sh tools/run-checks.sh
 ```bash
 for i in 1 2 3 4; do sh tools/run-checks.sh >/dev/null && echo "第 $i 轮 ok"; done
 ```
+
+一轮约 40 秒（有两个用例要等真实的读超时与退避），四轮两分半。别因为慢就跳过——
+这几条恰恰是最容易被并发改动弄坏的。
 
 > 写这类断言时注意别赌调度时序。曾经有一条「某源最终一定被禁用」的断言就是在赌
 > ——那条源会不会攒够三次连续失败，取决于别的源抢块多快。规则本身应该用假的

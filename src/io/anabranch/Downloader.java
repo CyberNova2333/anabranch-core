@@ -28,16 +28,20 @@ public final class Downloader {
     private static final long MIN_UNIT = 256L * 1024;
     /** 单个分片的尝试次数上限。到顶仍失败就让整轮失败——有 .meta 兜底，不丢进度。 */
     private static final int MAX_ATTEMPTS_PER_CHUNK = 6;
+    /** 重试之间的退避上限。 */
+    private static final long MAX_BACKOFF_MS = 2000;
 
     private final Engine engine;
     private final int defaultChunks;
     private final int maxConcurrent;
+    private final long chunkRetryBudgetMs;
     private final Logger log;
 
     private Downloader(Builder b) {
         this.engine = b.engine;
         this.defaultChunks = b.defaultChunks;
         this.maxConcurrent = b.maxConcurrent;
+        this.chunkRetryBudgetMs = b.chunkRetryBudgetMs;
         this.log = b.log;
     }
 
@@ -47,11 +51,25 @@ public final class Downloader {
         private Engine engine = new HttpEngine();
         private int defaultChunks = 8;
         private int maxConcurrent = 4;
+        private long chunkRetryBudgetMs = 60_000;
         private Logger log = Logger.NONE;
 
         public Builder engine(Engine e) { this.engine = e; return this; }
         public Builder defaultChunks(int n) { this.defaultChunks = Math.max(1, n); return this; }
         public Builder maxConcurrent(int n) { this.maxConcurrent = Math.max(1, n); return this; }
+
+        /**
+         * 单个分片**白费**在失败尝试上的时间上限（毫秒），默认 60 秒；<=0 表示不限。
+         *
+         * <p>为什么需要这个：光有次数上限（{@code MAX_ATTEMPTS_PER_CHUNK}）是不够的。
+         * 一条**卡住**的源——不是拒绝，是接了连接却不回数据——每次尝试都要熬满引擎的
+         * 读超时，次数上限就把代价乘了上去。默认 30 秒读超时 × 6 次 = 一个分片能卡住
+         * 三分钟，而这段时间里它一个字节都没往前走。
+         *
+         * <p>只算<b>失败</b>尝试与退避的耗时：正在正常传输的尝试不会被这个预算打断，
+         * 慢不等于坏。
+         */
+        public Builder chunkRetryBudgetMs(long ms) { this.chunkRetryBudgetMs = ms; return this; }
         public Builder logger(Logger l) { this.log = l == null ? Logger.NONE : l; return this; }
         public Downloader build() { return new Downloader(this); }
     }
@@ -225,8 +243,16 @@ public final class Downloader {
     private void fetchOneChunk(Request r, SourceSet set, ResumeState st, FileChannel ch,
                                ChunkRef ref, Listener l, Cancellation c) throws IOException {
         Throwable last = null;
+        // 白费掉的时间：失败尝试本身 + 退避等待。正在正常传输的尝试不计入，
+        // 也不会被打断——慢不等于坏。
+        long wastedNs = 0;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS_PER_CHUNK; attempt++) {
             if (c.isCancelled()) throw new IOException("已取消");
+            if (chunkRetryBudgetMs > 0 && wastedNs / 1_000_000 >= chunkRetryBudgetMs) {
+                throw new IOException(ref + " 在失败重试上已白费 " + (wastedNs / 1_000_000)
+                        + "ms，超过预算 " + chunkRetryBudgetMs + "ms，放弃这一轮"
+                        + "（进度已存 .meta，下次接着下）", last);
+            }
             List<Source> avail = set.available();
             if (avail.isEmpty()) {
                 throw new IOException("所有源都已被禁用，" + ref + " 无处可取", last);
@@ -259,6 +285,7 @@ public final class Downloader {
             } catch (Throwable e) {
                 set.onFailure(s);
                 last = e;
+                wastedNs += System.nanoTime() - t0;
                 if (c.isCancelled()) throw new IOException("已取消");
                 Policy.Decision d = set.policy().onFailure(s, ref, e, attempt, set.stats());
                 log.log("[" + ref + "] 源 " + s.id + " 第 " + attempt + " 次失败 → " + d, e);
@@ -267,10 +294,35 @@ public final class Downloader {
                 if (d == Policy.Decision.DISABLE_SOURCE) set.disable(s);
                 // RETRY_SAME / SWITCH_SOURCE 都是继续循环——具体挑谁交给下一轮 pick，
                 // 因为「同一条源」在被禁用之后可能已经不可选了。
+                wastedNs += backoff(attempt, c);
             }
         }
         throw last instanceof IOException ? (IOException) last
                 : new IOException(ref + " 取不回来", last);
+    }
+
+    /**
+     * 重试之间退避，返回实际等了多少纳秒。
+     *
+     * <p>立刻重试等于对着一台已经出问题的服务器猛敲：它多半正忙着或正在重启，
+     * 而你的重试让它更忙。指数退避封顶 {@value #MAX_BACKOFF_MS}ms——再长就该换源了，
+     * 而换源本来就是策略在管的事。
+     *
+     * <p>等待期间响应取消：否则「点了取消却还要再等两秒」在界面上就是卡住。
+     */
+    private long backoff(int attempt, Cancellation c) {
+        long ms = Math.min(MAX_BACKOFF_MS, 200L << Math.min(attempt - 1, 16));
+        long t0 = System.nanoTime();
+        long deadline = t0 + ms * 1_000_000L;
+        try {
+            while (System.nanoTime() < deadline) {
+                if (c.isCancelled()) break;
+                Thread.sleep(Math.min(50, ms));
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return System.nanoTime() - t0;
     }
 
     private void commit(Request r, ResumeState st, File part, Probe probe, Listener l)

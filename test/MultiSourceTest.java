@@ -35,6 +35,14 @@ public class MultiSourceTest {
         volatile int cutAfter = 0;
         /** >=0 时：成功服务这么多个区间之后开始返回 503（模拟下到一半掉线）。 */
         volatile int failAfterServed = -1;
+        /**
+         * >0 时：发完响应头就干等这么久，一个字节都不发。
+         *
+         * <p>这模拟的是最难缠的那种坏源——**不是拒绝，是接了连接却不回数据**。
+         * 拒绝会立刻抛异常，卡住则要熬满客户端的读超时；有了重试之后代价还要乘上
+         * 尝试次数。这正是 chunkRetryBudgetMs 存在的理由。
+         */
+        volatile int stallMs = 0;
 
         Mirror(String id, String etag) throws IOException {
             this.id = id;
@@ -80,6 +88,11 @@ public class MultiSourceTest {
             } else {
                 x.sendResponseHeaders(200, len);
             }
+            if (stallMs > 0) {
+                try { Thread.sleep(stallMs); } catch (InterruptedException ignored) {}
+                x.close();                       // 一个字节都不发，让客户端熬到读超时
+                return;
+            }
             int cut = cutAfter;
             try (OutputStream os = x.getResponseBody()) {
                 os.write(BODY, from, cut > 0 ? Math.min(len, cut) : len);
@@ -102,6 +115,8 @@ public class MultiSourceTest {
             testProbeAllCatchesSizeMismatch(a, b, c);
             testCrossSourceResumeKeepsProgress(a, b, c, dir);
             testSlowSourceGetsFewerChunks(a, b, c, dir);
+            testStalledSourceIsBoundedByBudget(a, b, c, dir);
+            testBackoffActuallyWaits(a, b, c, dir);
             testPolicyDisablesAfterThreeFailures();
             testPolicyPrefersFasterSource();
         } finally {
@@ -244,6 +259,65 @@ public class MultiSourceTest {
     }
 
     /**
+     * 卡住的源：预算必须把「attempts × 读超时」压下来。
+     *
+     * <p>不拿墙上时间做断言——那在负载高的机器上必然抖。改成数**服务端实际收到了
+     * 几个区间请求**：有预算时该明显少于不限预算时。
+     */
+    static void testStalledSourceIsBoundedByBudget(Mirror a, Mirror b, Mirror c, File dir)
+            throws Exception {
+        reset(a, b, c);
+        b.dead = c.dead = true;
+        a.stallMs = 4000;                      // 远大于测试引擎的 1500ms 读超时
+
+        File out1 = new File(dir, "stall-budget.bin");
+        String msg = "";
+        try {
+            budgeted(2500).download(new Request("f", out1, null, 1, true), set(a, b, c),
+                    Listener.NONE, Cancellation.NONE);
+        } catch (IOException e) { msg = String.valueOf(e.getMessage()); }
+        int withBudget = a.served.get();
+        check("卡住的源会报错而不是无限等", !msg.isEmpty(), "");
+        check("错误里说明是预算超了", msg.contains("超过预算"), msg);
+
+        a.served.set(0);
+        File out2 = new File(dir, "stall-nobudget.bin");
+        try {
+            budgeted(0).download(new Request("f", out2, null, 1, true), set(a, b, c),
+                    Listener.NONE, Cancellation.NONE);
+        } catch (IOException ignored) {}
+        int unlimited = a.served.get();
+
+        check("有预算时的尝试次数明显少于不限预算",
+                withBudget < unlimited,
+                "有预算 " + withBudget + " 次 / 不限 " + unlimited + " 次");
+        a.stallMs = 0; b.dead = c.dead = false;
+    }
+
+    /** 退避：三次快速失败之间应当真的等过，而不是贴着服务器猛敲。 */
+    static void testBackoffActuallyWaits(Mirror a, Mirror b, Mirror c, File dir)
+            throws Exception {
+        reset(a, b, c);
+        b.dead = c.dead = true;
+        // 不能把 a 也设成 dead——那样**探测阶段**就失败了，根本走不到重试循环
+        // （第一版这么写，整轮只用了 6ms，量到的是三次失败探测而不是退避）。
+        // cutAfter=1 正好：探测发的是 Range: bytes=0-0，只要 1 字节，能成功；
+        // 而真正的分片会立刻因「区间长度不符」失败，失败本身几乎不耗时。
+        a.cutAfter = 1;
+        File out = new File(dir, "backoff.bin");
+        long t0 = System.nanoTime();
+        try {
+            budgeted(0).download(new Request("f", out, null, 1, true), set(a, b, c),
+                    Listener.NONE, Cancellation.NONE);
+        } catch (IOException ignored) {}
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        // 三次失败之后源被拉黑退出，退避至少 200 + 400 = 600ms。
+        // 只取下界，不设上界——上界会因为机器负载而抖。
+        check("重试之间确实退避了", ms >= 500, "整轮只用了 " + ms + "ms，说明没等");
+        a.cutAfter = 0; b.dead = c.dead = false;
+    }
+
+    /**
      * 直接测策略规则，不经过网络也不经过调度。
      *
      * <p>策略只读 Stats、不碰 IO，所以可以造一份假的 Stats 直接问它「你选谁」
@@ -303,6 +377,13 @@ public class MultiSourceTest {
 
     // ───────────────────────── 支撑 ─────────────────────────
 
+    /** 指定重试时间预算的下载器；0 表示不限。 */
+    static Downloader budgeted(long budgetMs) {
+        return Downloader.newBuilder()
+                .engine(new HttpEngine(2000, 1500, "anabranch-test", Logger.NONE))
+                .defaultChunks(1).maxConcurrent(1).chunkRetryBudgetMs(budgetMs).build();
+    }
+
     static Downloader dl(int chunks) {
         return Downloader.newBuilder()
                 .engine(new HttpEngine(2000, 1500, "anabranch-test", Logger.NONE))
@@ -323,7 +404,7 @@ public class MultiSourceTest {
     static void reset(Mirror... ms) {
         for (Mirror m : ms) {
             m.served.set(0); m.dead = false; m.delayMs = 0;
-            m.cutAfter = 0; m.failAfterServed = -1;
+            m.cutAfter = 0; m.failAfterServed = -1; m.stallMs = 0;
         }
     }
 
