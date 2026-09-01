@@ -11,6 +11,12 @@
 #   bash aria2/native/build-aria2.sh
 # 产物: out/<abi>/libaria2-{openssl,gnutls}.so
 #
+# ARIA2_SLIM=1：裁掉 libxml2/SQLite/libssh2（metalink、Firefox cookie、SFTP
+# ——一个 HTTP 下载后端用不上的能力），gnutls 后端随之不再需要 OpenSSL
+# （它原本只供 libssh2 的加密原语）。宿主测试构建（build-host.sh）从第一天
+# 就是这个裁剪面，28 项真下载测试全在其上跑——裁剪的功能面已被验证，
+# 这个开关验的是 Android 交叉编译那一侧。默认关（全量 = 已验证配方）。
+#
 # 纪律（每一条都是踩过的坑，别删）：
 #  - minSdk 21、双 ABI；armv7 加 -D_LIBCPP_HAS_NO_OFF_T_FUNCTIONS 且链接
 #    compat_arm.c（32 位 bionic 的 fseeko/ftello 是 API 24，见该文件头注）。
@@ -102,8 +108,9 @@ build_deps() { # build_deps <abi> <host> <cc> <cxx> <openssl-target> <extra-cfla
     cp "$ZLIB_SRC/zlib.h" "build-zlib-$abi/zconf.h" "$PREFIX/include/"
     cp "build-zlib-$abi/libz.a" "$PREFIX/lib/libz.a"
 
-    # OpenSSL 1.1.1w（两组都要：openssl 组做 TLS；gnutls 组仅供 libssh2 的
-    # SFTP 原语——libssh2 不支持 gnutls 后端）
+    # OpenSSL 1.1.1w（全量构建里两组都要：openssl 组做 TLS；gnutls 组仅供
+    # libssh2 的加密原语——libssh2 不支持 gnutls 后端。裁剪构建里只有
+    # openssl 组用它，但反正要编，不为裁剪多开分支）
     echo "── openssl ($abi)"
     rm -rf "build-openssl-$abi" && cp -r "$OPENSSL_SRC" "build-openssl-$abi"
     run_log "$OUT/logs/openssl-$abi-conf.log" \
@@ -112,6 +119,13 @@ build_deps() { # build_deps <abi> <host> <cc> <cxx> <openssl-target> <extra-cfla
             -D__ANDROID_API__=21 -fPIC -w --prefix='$PREFIX'"
     run_log "$OUT/logs/openssl-$abi-build.log" make -C "build-openssl-$abi" -j"$NPROC"
     run_log "$OUT/logs/openssl-$abi-inst.log" make -C "build-openssl-$abi" install_sw
+
+    if [ -n "${ARIA2_SLIM:-}" ]; then
+        echo "  ·（裁剪构建：跳过 libxml2 / sqlite3 / libssh2）"
+        build_deps_gnutls "$abi" "$host" "$cc" "$cxx" "$depxc"
+        echo "  ✓ deps-$abi 完成（裁剪）"
+        return
+    fi
 
     # libxml2（必须 --without-iconv：bionic 的 iconv* 是 API 28，API21 设备必炸）
     echo "── libxml2 ($abi)"
@@ -140,7 +154,16 @@ build_deps() { # build_deps <abi> <host> <cc> <cxx> <openssl-target> <extra-cfla
     xmake "$OUT/logs/ssh2-$abi-build.log" "build-ssh2-$abi"
     run_log "$OUT/logs/ssh2-$abi-inst.log" make -C "build-ssh2-$abi" install
 
-    # ── gnutls 链（GMP → nettle → GnuTLS）──
+    build_deps_gnutls "$abi" "$host" "$cc" "$cxx" "$depxc"
+
+    echo "  ✓ deps-$abi 完成"
+}
+
+# gnutls 链（GMP → nettle → GnuTLS）。全量与裁剪两条路径共用。
+build_deps_gnutls() { # build_deps_gnutls <abi> <host> <cc> <cxx> <depxc>
+    local abi="$1" host="$2" cc="$3" cxx="$4" depxc="$5"
+    local PREFIX="$OUT/deps/$abi"
+
     echo "── gmp ($abi)"
     rm -rf "build-gmp-$abi" && mkdir "build-gmp-$abi"
     # gmp 的 mpn 手写 ARM 汇编走绝对寻址（R_ARM_ABS32），非 PIC 版没法进 .so
@@ -174,8 +197,6 @@ build_deps() { # build_deps <abi> <host> <cc> <cxx> <openssl-target> <extra-cfla
         --disable-doc --disable-tests --disable-tools --disable-guile --disable-cxx
     xmake "$OUT/logs/gnutls-$abi-build.log" "build-gnutls-$abi"
     run_log "$OUT/logs/gnutls-$abi-inst.log" make -C "build-gnutls-$abi" install
-
-    echo "  ✓ deps-$abi 完成"
 }
 
 # ─────────────────────────── aria2 + 最终链接（每组） ───────────────────────────
@@ -191,6 +212,12 @@ build_group() { # build_group <abi> <host> <cc> <cxx> <xcflags> <backend: openss
         tls_args="--with-openssl --without-gnutls --without-libnettle --without-libgmp"
     else
         tls_args="--with-gnutls --without-openssl --with-libnettle --with-libgmp"
+    fi
+    local feat_args
+    if [ -n "${ARIA2_SLIM:-}" ]; then
+        feat_args="--without-libxml2 --without-libexpat --without-sqlite3 --without-libssh2"
+    else
+        feat_args="--with-libxml2 --without-libexpat --with-sqlite3 --with-libssh2"
     fi
     # pkg-config 套 --static：静态链时 configure 的探测链接需要 Libs.private
     # （openssl.pc 的 -ldl 等），否则误报找不到库。
@@ -211,9 +238,9 @@ build_group() { # build_group <abi> <host> <cc> <cxx> <xcflags> <backend: openss
         PKG_CONFIG="$pcwrap" PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" \
         bash "$ARIA2_SRC/configure" --host="$host" --prefix="$PREFIX" \
             --enable-static --disable-shared --enable-libaria2 \
-            $tls_args \
-            --without-libuv --without-libcares --without-libexpat \
-            --with-libxml2 --with-sqlite3 --with-libz --with-libssh2 \
+            $tls_args $feat_args \
+            --without-libuv --without-libcares \
+            --with-libz \
             --without-jemalloc --without-tcmalloc --without-appletls \
             --without-wintls --without-libgcrypt \
             2>&1 | tee "$OUT/logs/aria2-$abi-$be-conf.log" ) \
@@ -232,7 +259,15 @@ build_group() { # build_group <abi> <host> <cc> <cxx> <xcflags> <backend: openss
     local compat=()
     if [ "$abi" = "armeabi-v7a" ]; then compat=("$GLUE_DIR/compat_arm.c"); fi
     local deplibs
-    if [ "$be" = "openssl" ]; then
+    if [ -n "${ARIA2_SLIM:-}" ]; then
+        # 裁剪面：没有 ssh2 之后，gnutls 后端连 OpenSSL 都不需要了——
+        # 它原本只供 libssh2 的加密原语。
+        if [ "$be" = "openssl" ]; then
+            deplibs="libssl.a libcrypto.a libz.a"
+        else
+            deplibs="libgnutls.a libhogweed.a libnettle.a libgmp.a libz.a"
+        fi
+    elif [ "$be" = "openssl" ]; then
         deplibs="libssl.a libcrypto.a libssh2.a libxml2.a libsqlite3.a libz.a"
     else
         deplibs="libgnutls.a libhogweed.a libnettle.a libgmp.a libssh2.a libssl.a libcrypto.a libxml2.a libsqlite3.a libz.a"
