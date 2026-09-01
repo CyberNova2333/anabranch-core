@@ -110,7 +110,7 @@ full design; [CONTRIBUTING.md](CONTRIBUTING.md) covers development workflow.
 Development needs no build system:
 
 ```bash
-sh tools/run-checks.sh    # compile + core boundary checks + 67 tests, ~1 minute
+sh tools/run-checks.sh    # compile + core boundary checks + 77 tests, ~1 minute
 ```
 
 Gradle exists solely for packaging and publishing (see

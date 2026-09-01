@@ -16,8 +16,13 @@ echo "── core 按 Java 8 编译 ──"
 # 那三条 --release 看不见。
 javac --release 8 -nowarn -d "$out/core8" src/io/anabranch/*.java
 
+echo "── aria2 骨架按 Java 8 编译 ──"
+# 独立 artifact，但 minSdk 21 的约束一条不少；不接进 Gradle（不进 core jar）。
+javac --release 8 -nowarn -d "$out/aria2j8" -cp "$out/core8" aria2/src/io/anabranch/aria2/*.java
+
 echo "── 编译（含测试）──"
-javac -nowarn -d "$out" src/io/anabranch/*.java test/*.java
+javac -nowarn -d "$out" src/io/anabranch/*.java aria2/src/io/anabranch/aria2/*.java \
+    test/*.java aria2/test/*.java
 
 echo "── core 边界 ──"
 python3 tools/check-core-boundaries.py
@@ -26,5 +31,6 @@ echo "── 测试 ──"
 java -Dstdout.encoding=UTF-8 -cp "$out" SingleSourceTest
 java -Dstdout.encoding=UTF-8 -cp "$out" MultiSourceTest
 java -Dstdout.encoding=UTF-8 -cp "$out" ThrottleTest
+java -Dstdout.encoding=UTF-8 -cp "$out" Aria2FailoverTest
 
 echo "── 全部通过 ──"

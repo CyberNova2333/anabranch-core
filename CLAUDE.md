@@ -132,7 +132,7 @@ aria2 是 GPLv2+，静态链接后分发二进制有源码提供义务。把它�
 ### 提交前跑一遍
 
 ```bash
-sh tools/run-checks.sh      # Java 8 编译 → 全量编译 → core 边界 → 三套测试（约 1 分钟）
+sh tools/run-checks.sh      # Java 8 编译 → 全量编译 → core 边界 → 四套测试（约 1 分钟）
 ```
 
 **「javac 过了」不等于「能提交」。** 这个库的正确性几乎全在测试里，编译器一点忙
