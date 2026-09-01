@@ -86,9 +86,14 @@ aria2 是 GPLv2+，静态链接后分发二进制有源码提供义务。把它�
 
 ---
 
-## bundle 导入与签名约定
+## bundle 导入与签名约定（历史工作流，已被直接推送取代）
 
-日常流程是在**另一台机器/另一个 Agent** 里产出 commit，打成 bundle 送进来，再在本机导入
+> **2026-09-01 起不再是日常流程**：Agent 会话已能直接向本仓库推送，commit 不再
+> 经维护者本人的 SSH key 重签（维护者知情并接受）。`tools/rebase-bundle-to-main.sh`
+> 保留不动——将来再出现「在无推送权限的环境里产出 commit」的场景仍用得上。
+> 以下记录的是该工作流的原始约定。
+
+日常流程曾是在**另一台机器/另一个 Agent** 里产出 commit，打成 bundle 送进来，再在本机导入
 推送。已固化 `tools/rebase-bundle-to-main.sh`，导入时它会：
 
 - **始终以当前已验证的 `origin/main` 为基线**，把 bundle 当作下一条 commit，绝不覆盖已验证历史；
