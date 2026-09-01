@@ -115,8 +115,8 @@ sh tools/run-checks.sh
 1. **编译** `src/` 与 `test/`；
 2. **`tools/check-core-boundaries.py`**——core 不碰 Android、零第三方依赖、
    无 API 24+ 运行时类库、分层无倒挂（四条的理由见 `CLAUDE.md` 铁律 1–3）；
-3. **三套测试**：`SingleSourceTest`（21 项）+ `MultiSourceTest`（29 项）
-   + `ThrottleTest`（13 项），共 63 项。
+3. **三套测试**：`SingleSourceTest`（21 项）+ `MultiSourceTest`（33 项）
+   + `ThrottleTest`（13 项），共 67 项。
 
 第 1 步里有一条容易被忽略的：`javac --release 8` 单独编一遍 core。这比任何静态
 检查都强——minSdk 21 的实际含义就是「core 的字节码必须是 Java 8 能吃下的」，

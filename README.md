@@ -113,7 +113,6 @@ etag 不一致只当提示**——尺寸不同才是真的不同。
 
 ## 已知的欠账（第 1 步刻意没做）
 
-- **`onSourceSwitch` 的 `to` 恒为 null**：下一条源要等下一轮 `pick` 才定。
 - **aria2 后端**：还没做，将来必须是独立 artifact（见「许可」）。
 - **不支持 Range 时无法续传**：退化成单流整份下，中断就得重来。这是协议限制，
   没法绕过（失败时至少不再留下用不上的 `.part`/`.meta` 了）。
@@ -124,7 +123,7 @@ etag 不一致只当提示**——尺寸不同才是真的不同。
 
 ```bash
 sh tools/install-hooks.sh     # 只有 Agent 没碰过这份克隆时才需要
-sh tools/run-checks.sh        # 编译 + core 边界 + 63 项测试（约 1 分钟）
+sh tools/run-checks.sh        # 编译 + core 边界 + 67 项测试（约 1 分钟）
 ```
 
 规范见 [CONTRIBUTING.md](CONTRIBUTING.md)；AI 协作者的硬约束见

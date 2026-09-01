@@ -268,6 +268,9 @@ public final class Downloader {
                                ChunkRef ref, Listener l, Cancellation c, SpeedMeter meter)
             throws IOException {
         Throwable last = null;
+        // 上一轮失败的源。切换回调要等到下一轮 pick 选出真实的新源才发——
+        // 早先在失败当场就发，to 只能填 null，回调名不副实。
+        Source failedBefore = null;
         // 白费掉的时间：失败尝试本身 + 退避等待。正在正常传输的尝试不计入，
         // 也不会被打断——慢不等于坏。
         long wastedNs = 0;
@@ -283,6 +286,10 @@ public final class Downloader {
                 throw new IOException("所有源都已被禁用，" + ref + " 无处可取", last);
             }
             Source s = set.policy().pick(avail, set.stats(), ref);
+            if (failedBefore != null) {
+                l.onSourceSwitch(failedBefore, s, ref, last);
+                failedBefore = null;
+            }
             long t0 = System.nanoTime();
             set.onStart(s);
             try {
@@ -314,11 +321,11 @@ public final class Downloader {
                 if (c.isCancelled()) throw new IOException("已取消");
                 Policy.Decision d = set.policy().onFailure(s, ref, e, attempt, set.stats());
                 log.log("[" + ref + "] 源 " + s.id + " 第 " + attempt + " 次失败 → " + d, e);
-                l.onSourceSwitch(s, null, ref, e);
                 if (d == Policy.Decision.ABORT) break;
                 if (d == Policy.Decision.DISABLE_SOURCE) set.disable(s);
                 // RETRY_SAME / SWITCH_SOURCE 都是继续循环——具体挑谁交给下一轮 pick，
                 // 因为「同一条源」在被禁用之后可能已经不可选了。
+                failedBefore = s;
                 wastedNs += backoff(attempt, c);
             }
         }

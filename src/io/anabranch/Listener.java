@@ -14,9 +14,13 @@ public interface Listener {
     default void onChunkVerifyFailed(int index, String expected, String actual) {}
 
     /**
-     * 某条源在某一分片上失败了。{@code to} 目前恒为 null——下一条源要等下一轮
-     * {@link Policy#pick} 才定，这里报的是「谁失败了」而不是「换成了谁」。
-     * 想知道最终用了哪条，看 {@link #onChunkDone} 与日志。
+     * {@code from} 在某一分片上失败、即将改用 {@code to} 重试时回调。
+     *
+     * <p>{@code to} 是下一次尝试<b>真正要用</b>的源：回调推迟到下一轮
+     * {@link Policy#pick} 之后、重试开始之前才发（也因此发生在退避等待之后）。
+     * {@code to} 可能等于 {@code from}——策略决定原地重试时挑回同一条是正常的。
+     * 分片就此放弃（预算耗尽、次数用完、策略 ABORT、无源可用）时没有这个回调，
+     * 因为没有发生切换——失败会以异常从 download 抛出。
      */
     default void onSourceSwitch(Source from, Source to, ChunkRef chunk, Throwable why) {}
     Listener NONE = new Listener() {};
