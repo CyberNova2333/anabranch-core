@@ -169,6 +169,11 @@ public interface Engine {
 
 > 拆开的理由不只是许可：绝大多数使用者不需要 native，不该被迫吞一个 20MB 的 so。
 
+> **勘误（2026-09-01）**：`Aria2Engine implements Engine` 这条路已被实测判死——
+> aria2 自己管分段，塞自定义 Range 会让它按 Content-Range 总长无限等待。
+> aria2 后端改以整文件、多 URI 的 `Aria2Downloader` 形态接入，实测记录与
+> 完整设计见 [`ARIA2.md`](ARIA2.md) §二。「能换引擎」对其他 HTTP 实现仍然成立。
+
 ### 3.1 aria2 的 dead-man's switch（这块设计直接搬）
 
 原理值得原样保留，它解决的是一类真问题：**native 崩溃（SIGSEGV/SIGABRT）整体
