@@ -11,8 +11,8 @@ sh tools/install-hooks.sh        # 只有 Agent 没碰过这份克隆时才需�
 sh tools/run-checks.sh           # 编译 + core 边界 + 67 项测试，约 1 分钟
 ```
 
-没有 Gradle、没有 Maven、没有依赖下载。`javac` 和 `python3` 就够了——这是刻意的，
-见下面「为什么没有构建系统」。
+日常开发没有依赖下载，`javac` 和 `python3` 就够了——这是刻意的。仓库里的
+`build.gradle.kts` 只管打包与发布，开发用不上，见下面「构建系统只管发布」。
 
 ## 分支
 
@@ -86,13 +86,24 @@ Co-authored-by: Claude <noreply@anthropic.com>
 CI 跑的就是你本地那条命令，没有第二套配置——所以本地绿了 CI 基本不会红，
 反过来也一样。
 
-## 为什么没有构建系统
+## 构建系统只管发布
 
-`javac src/io/anabranch/*.java` 就能编译，`java -cp out SingleSourceTest` 就能跑测试。
-加 Gradle 会带来 wrapper、依赖解析、版本对齐一整套，而这个库目前**没有任何依赖**。
+这一节原来叫「为什么没有构建系统」，理由是：`javac` 就能编译、库没有任何依赖，
+Gradle 的 wrapper、依赖解析、版本对齐一整套在开发循环里全是净成本；等要发
+Maven Central 时再加，那时它才付出与成本相称的价值。
 
-等到要发到 Maven Central、或者要加 `anabranch-aria2`（含 native 产物）时再加，
-那时它才开始付出与成本相称的价值。
+**那个时点到了**（2026-09，发布准备），于是加了 `build.gradle.kts`——但边界收得
+很紧，原来的理由依然成立：
+
+- Gradle 只管**打包与发布**：jar + sources + javadoc + POM + 签名，坐标
+  `io.anabranch:anabranch-core`。步骤见 [docs/RELEASING.md](docs/RELEASING.md)。
+- 开发循环仍然以 `tools/run-checks.sh` 为准，CI 跑的也是它，不是 Gradle。
+  `gradle build` 会把三套测试当 JavaExec 再跑一遍（少 core 边界检查那一步），
+  可当交叉验证，不是提交门槛。
+- 只用 Gradle 核心插件，不引任何第三方构建插件；除 Gradle 发行版本身，
+  构建不下载任何东西。
+- **刻意不放 wrapper**：那要往仓库里提交一个二进制 jar，而需要 Gradle 的只有
+  发布这一个动作、一个人。发布者本机装 Gradle 8+ 即可。
 
 ## 发布与许可
 
