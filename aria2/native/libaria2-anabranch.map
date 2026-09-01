@@ -1,0 +1,13 @@
+ANABRANCH_ARIA2_1.0 {
+  global:
+    JNI_OnLoad;
+    Java_io_anabranch_aria2_Aria2Native_sessionNew;
+    Java_io_anabranch_aria2_Aria2Native_sessionShutdown;
+    Java_io_anabranch_aria2_Aria2Native_sessionRelease;
+    Java_io_anabranch_aria2_Aria2Native_addUri;
+    Java_io_anabranch_aria2_Aria2Native_runOnce;
+    Java_io_anabranch_aria2_Aria2Native_progressOf;
+    Java_io_anabranch_aria2_Aria2Native_errorOf;
+  local:
+    *;
+};

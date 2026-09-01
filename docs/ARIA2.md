@@ -90,6 +90,15 @@ aria2 版本」保证；若将来换的版本在 changelog 里明确改了 Range
 存放、进程被系统杀掉后的对账，每一条在碎片化的 Android 生态上都是长尾。
 进程内崩溃的问题有专门解法，就是下一节。
 
+> **控制面订正（2026-09-01）**：早先实践的进程内形态其实是「argv 驱动 aria2c
+> 主循环 + 进程内 RPC 控制」——RPC 的端口与 secret 问题它同样背着。本库不再
+> 走那条：改用 libaria2 的**公开 session API**（`--enable-libaria2`），控制面
+> 就是 JNI 函数本身——无 RPC、无端口、无 secret，上表「无网络接口」这格从
+> 此是真的。事件循环由 Java 侧单线程反复调 `runOnce` 驱动，取消 = 两次
+> `runOnce` 之间调 `sessionShutdown`，不存在跨线程调 libaria2（它不是线程
+> 安全的）。公开 API 也没有 argv 解析路径，连「参数错直接 exit() 杀进程」
+> 这档坑都一并绕开。
+
 ## 四、dead-man's switch（设计直接搬，已实现）
 
 **问题**：native 崩溃（SIGSEGV/SIGABRT）整体杀进程，Java 层没有任何 catch 的
@@ -130,12 +139,27 @@ aria2 版本」保证；若将来换的版本在 changelog 里明确改了 Range
 `aria2/` 的源码同样跑 `--release 8` 编译（Android artifact，minSdk 21 的约束
 一条不少）；`tools/run-checks.sh` 已接上骨架编译与 selector 测试。
 
-## 六、native 侧计划（本环境做不了的部分）
+native 侧文件（`aria2/native/`，2026-09-01 落地）：
 
-1. NDK 交叉编译 aria2 及依赖（openssl / gnutls 两份 TLS 后端），产出
-   `libaria2-openssl.so` / `libaria2-gnutls.so`，四个 ABI；
-2. JNI 胶水实现 `Aria2Native` 声明的函数（libaria2 的 C++ API 包一层 C）；
-3. 构建脚本入库（GPL 义务的一部分：别人要能复现这两个 `.so`）。
+| 文件 | 说明 |
+|---|---|
+| `aria2_jni.cpp` | JNI 胶水，走 `<aria2/aria2.h>` 公开 API，已对着真头文件过类型检查 |
+| `libaria2-anabranch.map` | version script：恰导出 8 个 JNI 符号 @@ANABRANCH_ARIA2_1.0 |
+| `compat_arm.c` | armv7 的 fseeko/ftello 兜底（32 位 bionic 是 API 24 才有） |
+| `build-aria2.sh` | 交叉编译 + 构建后自检（符号卫生 / NEEDED / 16K 对齐 / stub 差集） |
+
+## 六、native 侧构建（已落地为 CI，待跑通验证）
+
+`.github/workflows/build-aria2.yml`（**workflow_dispatch 手动触发**，产物只上传
+artifact、不入库不发版）：NDK r25c 与 9 个依赖 tarball 全部 sha256 钉死，
+aria2 1.37.0——与 §二 Range 实测钉的是同一版本。配方来自早先在另一个项目里
+逐坑验证过的构建（gmp 的 PIC 汇编、nettle 在 armv7 禁 NEON、libxml2 去 iconv、
+16K 页对齐、armv7 对 API-21 stub 的 UND 差集硬校验，全部保留）；本仓库的
+差异只在胶水层：`--enable-libaria2` 走公开 API、导出符号换成 anabranch 的 8 个、
+去掉了不需要的控制台日志补丁。
+
+剩余（按序）：CI 首跑验证 → 真机装载与下载验证 → AAR 打包 → 二进制分发前
+落实 GPL 义务（第三方 NOTICES、构建可复现说明）。
 
 ## 七、测试计划
 
@@ -148,8 +172,11 @@ aria2 版本」保证；若将来换的版本在 changelog 里明确改了 Range
 ## 八、开放问题
 
 1. ~~Range 实测（决定形态 2 存亡）~~——已做，形态 2 判死，见 §二；
-2. `Cancellation` 映射：libaria2 的 shutdown 语义是否够及时，还是要按 gid 逐个
-   remove；
+2. ~~`Cancellation` 映射~~——随单线程 runOnce 模型解决（见 §三 订正）：取消在
+   两次 runOnce 之间调 `sessionShutdown`，同线程、无竞态；及时性待真机量一下；
 3. 进度粒度：轮询周期取多少才能既喂饱 `onProgress` 又不把 JNI 调用变成热点；
 4. `.meta` 与 aria2 自己的 `.aria2` 控制文件的关系——形态 1 下续传状态以谁为准
-   （倾向：完全交给 aria2，`.meta` 只在 core 路径存在）。
+   （倾向：完全交给 aria2，`.meta` 只在 core 路径存在）；
+5. 依赖面裁剪：配方按已验证形态保留了 libxml2/sqlite3/libssh2（metalink、
+   Firefox cookie、SFTP），对一个 HTTP 下载后端未必都需要——裁剪能明显缩小
+   `.so` 与构建时长，但每裁一刀都是对已验证配方的偏离，等 CI 首跑通了再议。
