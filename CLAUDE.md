@@ -29,7 +29,7 @@
 非 `java.*` 的包。
 
 理由不是洁癖：这个库敢说自己正确，靠的是「真起本地 HTTP 服务器、真下文件」的
-63 项测试；一旦掺进 `Context` / `Handler` / `SharedPreferences`，就再也没法脱机
+67 项测试；一旦掺进 `Context` / `Handler` / `SharedPreferences`，就再也没法脱机
 验证。Android 那层接线（前台服务、通知、WorkManager）属于**另一个 artifact**。
 
 需要别的 HTTP 实现？自己写一个 `Engine`——那正是把 `Engine` 抽出来的意义。

@@ -111,6 +111,7 @@ public class MultiSourceTest {
         try {
             testSpreadsAcrossSources(a, b, c, dir);
             testDeadSourceIsRoutedAround(a, b, c, dir);
+            testSourceSwitchReportsRealTarget(a, b, c, dir);
             testAllDeadReportsEverySource(a, b, c, dir);
             testProbeAllCatchesSizeMismatch(a, b, c);
             testCrossSourceResumeKeepsProgress(a, b, c, dir);
@@ -165,6 +166,47 @@ public class MultiSourceTest {
                 set.stats().consecutiveFailures(sourceById(set, "a")) > 0
                         || set.stats().isDisabled(sourceById(set, "a")), "");
         check("没从挂掉的源拿到任何区间", a.served.get() == 0, "a=" + a.served);
+        a.dead = false;
+    }
+
+    /**
+     * onSourceSwitch 的 {@code to} 必须是真正要换到的那条源，不能是 null。
+     *
+     * <p>用固定策略消除调度不确定性：a 只在没失败过时被选，失败一次后必选 b。
+     * 于是「a 失败 → 换到 b」这条序列是确定的，能对 from/to 做精确断言，
+     * 不用赌 fastestFirst 在打分平局时选了谁。
+     */
+    static void testSourceSwitchReportsRealTarget(Mirror a, Mirror b, Mirror c, File dir)
+            throws Exception {
+        reset(a, b, c);
+        a.dead = true;
+        File out = new File(dir, "switch-to.bin");
+        Policy fixed = new Policy() {
+            public Source pick(List<Source> cand, Stats st, ChunkRef ch) {
+                for (Source s : cand) if (s.id.equals("a") && st.consecutiveFailures(s) == 0) return s;
+                for (Source s : cand) if (s.id.equals("b")) return s;
+                return cand.get(0);
+            }
+            public Decision onFailure(Source s, ChunkRef ch, Throwable e, int at, Stats st) {
+                return Decision.SWITCH_SOURCE;
+            }
+        };
+        SourceSet set = new SourceSet(Arrays.asList(
+                Source.ofBase("a", a.base()), Source.ofBase("b", b.base())), fixed);
+        List<Source> froms = new ArrayList<>(), tos = new ArrayList<>();
+        budgeted(0).download(new Request("f", out, null, 1, true), set,
+                new Listener() {
+                    public void onSourceSwitch(Source from, Source to, ChunkRef ch, Throwable w) {
+                        synchronized (froms) { froms.add(from); tos.add(to); }
+                    }
+                }, Cancellation.NONE);
+        check("换源后下载完成且内容正确", same(out, BODY), "");
+        check("失败一次恰好报告一次切源", froms.size() == 1, "报告了 " + froms.size() + " 次");
+        check("from 是失败的那条", !froms.isEmpty() && froms.get(0).id.equals("a"),
+                froms.isEmpty() ? "" : froms.get(0).id);
+        check("to 是真实的新源而不是 null",
+                !tos.isEmpty() && tos.get(0) != null && tos.get(0).id.equals("b"),
+                tos.isEmpty() ? "" : String.valueOf(tos.get(0) == null ? null : tos.get(0).id));
         a.dead = false;
     }
 
