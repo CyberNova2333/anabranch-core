@@ -26,8 +26,9 @@ Java 8 字节码；Android 上 minSdk 21，不需要 core library desugaring。
 sh tools/run-checks.sh    # Java 8 编译 → 全量编译 → core 边界 → 三套测试
 ```
 
-三个套件都**真起本地 HTTP 服务器、真下文件**；多源那套起三台，可以随时把某台
-切成「全挂 / 慢 / 服务 N 块后掉线 / 接了连接不回数据」。
+core 的三个套件都**真起本地 HTTP 服务器、真下文件**；多源那套起三台，可以随时
+把某台切成「全挂 / 慢 / 服务 N 块后掉线 / 接了连接不回数据」。第四套
+（`Aria2FailoverTest`）测 aria2 后端的 dead-man's switch，纯文件 IO、不碰网络。
 
 覆盖的不是「能下下来」，而是几种会静默出错的路径：
 
@@ -70,6 +71,10 @@ src/io/anabranch/SpeedMeter.java    最近 3 秒滑动窗口测速
 test/SingleSourceTest.java   单源：分块、续传、校验、Range 缺失（21 项）
 test/MultiSourceTest.java    多源：选路、切源、跨源续传、预算、退避（33 项）
 test/ThrottleTest.java       限速与测速（13 项）
+
+aria2/                       anabranch-aria2 后端的设计稿落点（独立 artifact，
+                             不进 core jar）：dead-man's switch 已实现并带测试
+                             （10 项），其余为骨架。见 docs/ARIA2.md
 ```
 
 ## 三个刻意的决定
@@ -142,7 +147,7 @@ etag 不一致只当提示**——尺寸不同才是真的不同。
 
 ```bash
 sh tools/install-hooks.sh     # 只有 Agent 没碰过这份克隆时才需要
-sh tools/run-checks.sh        # 编译 + core 边界 + 67 项测试（约 1 分钟）
+sh tools/run-checks.sh        # 编译 + core 边界 + 77 项测试（约 1 分钟）
 ```
 
 规范见 [CONTRIBUTING.md](CONTRIBUTING.md)；AI 协作者的硬约束见
