@@ -1,5 +1,7 @@
 # Anabranch · 多源分块下载
 
+> English: [README.en.md](README.en.md)
+>
 > **anabranch**：河流从主河道分出去、下游又汇回来的那种支汊。数据分成多股走不同
 > 线路、最后汇回同一个文件——名字是字面意思，不是比喻。
 >
@@ -8,16 +10,24 @@
 >
 > 纯 Java、零第三方依赖、core 不碰 Android。
 
+## 引入
+
+预定的 Maven Central 坐标（**尚未发布**，发布步骤见 [docs/RELEASING.md](docs/RELEASING.md)）：
+
+```
+io.anabranch:anabranch-core:0.1.0
+```
+
+Java 8 字节码；Android 上 minSdk 21，不需要 core library desugaring。
+
 ## 怎么跑
 
 ```bash
-javac -d out src/io/anabranch/*.java test/*.java
-java -Dstdout.encoding=UTF-8 -cp out SingleSourceTest   # 21 项
-java -Dstdout.encoding=UTF-8 -cp out MultiSourceTest    # 25 项
+sh tools/run-checks.sh    # Java 8 编译 → 全量编译 → core 边界 → 三套测试
 ```
 
-两个套件都**真起本地 HTTP 服务器、真下文件**；多源那套起三台，可以随时把某台
-切成「全挂 / 慢 / 服务 N 块后掉线」。
+三个套件都**真起本地 HTTP 服务器、真下文件**；多源那套起三台，可以随时把某台
+切成「全挂 / 慢 / 服务 N 块后掉线 / 接了连接不回数据」。
 
 覆盖的不是「能下下来」，而是几种会静默出错的路径：
 
@@ -45,12 +55,21 @@ java -Dstdout.encoding=UTF-8 -cp out MultiSourceTest    # 25 项
 ## 文件
 
 ```
-src/io/anabranch/Msdl.java          公共值类型与回调（Probe/Result/Integrity/Request/Listener…）
+src/io/anabranch/Downloader.java    调度：分块、并发、重试循环、校验、提交
 src/io/anabranch/Engine.java        引擎接口：只负责「取一个字节区间」
 src/io/anabranch/HttpEngine.java    HttpURLConnection 实现，零第三方依赖
+src/io/anabranch/Source.java        一条线路；Resolver 决定「逻辑文件 → 该源上的 URL」
+src/io/anabranch/SourceSet.java     一组源 + 运行时观测（EMA 吞吐、连败、在途数）
+src/io/anabranch/Policy.java        选路与失败处置：fastestFirst / weighted
+src/io/anabranch/Integrity.java     整份 + 逐块摘要
 src/io/anabranch/ResumeState.java   .part/.meta 续传状态，格式显式且带版本号
-src/io/anabranch/Downloader.java    调度：分块、并发、校验、提交
-test/SingleSourceTest.java  端到端测试
+src/io/anabranch/RateLimiter.java   令牌桶限速（整次下载一份额度）
+src/io/anabranch/SpeedMeter.java    最近 3 秒滑动窗口测速
+其余为小的值类型与回调接口（Request/Result/Probe/Listener/Stats/…）
+
+test/SingleSourceTest.java   单源：分块、续传、校验、Range 缺失（21 项）
+test/MultiSourceTest.java    多源：选路、切源、跨源续传、预算、退避（33 项）
+test/ThrottleTest.java       限速与测速（13 项）
 ```
 
 ## 三个刻意的决定
@@ -134,8 +153,7 @@ sh tools/run-checks.sh        # 编译 + core 边界 + 67 项测试（约 1 分�
 
 ## 许可
 
-建议 **Apache-2.0**——比 MIT 多一条专利授权，商业项目敢用。
-建仓库时用 GitHub 的 license 选择器直接生成 `LICENSE`，别手抄（抄错了比没有还麻烦）。
+**Apache-2.0**（见 [LICENSE](LICENSE)）——比 MIT 多一条专利授权，商业项目敢用。
 
 ⚠ 将来加 `anabranch-aria2` 时**必须单独一个 artifact**：aria2 是 GPLv2+，
 静态链接后分发二进制有源码提供义务，不能让 core 的使用者被动继承。
