@@ -9,6 +9,11 @@ package io.anabranch.aria2;
  *
  * <p>约定：options 用扁平的 {@code String[]}（key, value 交替），不用 Map——
  * JNI 侧解 Map 的样板代码远多于解数组，而调用方只有本包。
+ *
+ * <p><b>线程契约</b>：libaria2 不是线程安全的，session 的全部调用（含
+ * shutdown）都必须来自同一条线程。事件循环由该线程反复调 {@link #runOnce}
+ * 驱动（很快返回），取消 = 两次 runOnce 之间调 {@link #sessionShutdown}——
+ * 于是根本不需要跨线程调 native。
  */
 final class Aria2Native {
 
@@ -32,7 +37,7 @@ final class Aria2Native {
     /** 挂一条下载：同一文件的 N 个镜像 URI。返回 gid；null 表示失败。 */
     static native String addUri(long session, String[] uris, String[] options);
 
-    /** 跑一步事件循环。返回 1 表示还有事做，0 表示已停。 */
+    /** 跑一步事件循环。返回 1 表示还有事做，0 表示已停，负值表示出错。 */
     static native int runOnce(long session);
 
     /** 进度：{completedBytes, totalBytes, downloadSpeed}；gid 不存在返回 null。 */
