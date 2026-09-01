@@ -132,9 +132,21 @@ aria2 版本」保证；若将来换的版本在 changelog 里明确改了 Range
 |---|---|---|
 | `BackendSelector` | 接口，定稿 | 上一节的四个方法 |
 | `FileBackendSelector` | **完整实现 + 测试** | 落盘协议如上；无 nio.file（minSdk 21 同样适用） |
-| `Aria2Downloader` | 骨架 | 形态 1 的公共面；native 未接入前抛 `UnsupportedOperationException` |
+| `Aria2Downloader` | **完整实现 + 真下载测试** | 单线程 runOnce 驱动、下载后逐块+整份自验、rename 提交；续传交给 aria2 的 `.aria2` |
 | `Aria2Engine` | **已删除** | 形态 2 实测判死（见 §二），按「不留半活路径」的规矩移除 |
-| `Aria2Native` | JNI 表面 | libaria2 C API 的最小子集：session 建立/关停、addUri、轮询进度 |
+| `Aria2Native` | JNI 表面（已接通） | session 建立/关停、addUri、runOnce、进度/状态/错误查询，共 9 个入口 |
+
+`Aria2Downloader` 的几条实现决定：
+
+- **后端一次加载定终身**：两个 TLS 后端导出同名 JNI 符号，同一进程装两份会让
+  符号解析变成掷骰子；切换只在下次启动生效——dead-man's switch 的语义本来
+  就是这样。
+- 校验**不用** aria2 的 checksum 选项：校验只有一个出处（我们的 `Integrity`），
+  行为才可预期；校验不过删产物防「坏内容被下次续传接着用」。
+- 网络类失败**保留** `.a2part`/`.aria2` 供续传；校验类失败**删干净**——
+  两类失败的处置刻意相反。
+- session 停不净（预算 10 秒）就不 `sessionFinal` 也不 disarm：宁可下次启动
+  多换一次后端，也不把行为异常的后端标成「干净退出过」。
 
 `aria2/` 的源码同样跑 `--release 8` 编译（Android artifact，minSdk 21 的约束
 一条不少）；`tools/run-checks.sh` 已接上骨架编译与 selector 测试。
@@ -161,22 +173,30 @@ aria2 1.37.0——与 §二 Range 实测钉的是同一版本。配方来自早�
 剩余（按序）：CI 首跑验证 → 真机装载与下载验证 → AAR 打包 → 二进制分发前
 落实 GPL 义务（第三方 NOTICES、构建可复现说明）。
 
-## 七、测试计划
+## 七、测试（已落地）
 
-- **现在**：`Aria2FailoverTest`——selector 全部状态转移（纯文件 IO，无网络，
-  「不许 mock 网络」对它不适用，因为它根本不碰网络）。
-- **native 接入后**：与 core 同一套打法——真起本地 HTTP 服务器，对着
-  `Aria2Downloader` 跑下载/多镜像/校验失败/取消；桌面 JVM 上载入桌面版
-  libaria2 跑，Android 上进 instrumented test。
+- `Aria2FailoverTest`（10 项，在 `tools/run-checks.sh` 里）——selector 全部
+  状态转移。纯文件 IO，无网络。
+- `Aria2DownloaderTest`（28 项，`sh aria2/native/run-host-tests.sh`）——
+  **真下载测试**：`build-host.sh` 把同一份 JNI 胶水配同一版 aria2（1.37.0）
+  编成宿主 `.so` 载入桌面 JVM，对着真实本地 HTTP 服务器跑：加载失败换后端、
+  多镜像绕开挂掉的那台、整份/逐块校验拦坏内容、取消、断点续传。
+  刻意不并进 run-checks（那条命令的承诺是 javac+python3 一分钟出结果），
+  CI 里是并行的独立 job（checks.yml 的 `aria2-backend`）。
+  一条经验已写进测试注释：aria2 续传前会开一条无 Range 的探测连接、确认后
+  掐掉——服务端字节计数会把灌进 socket 缓冲区的部分也算上，断言要看请求
+  序列而不是计数。
+- **剩余**：Android instrumented test（真机装载 + 下载），等 AAR 打包一起做。
 
 ## 八、开放问题
 
 1. ~~Range 实测（决定形态 2 存亡）~~——已做，形态 2 判死，见 §二；
 2. ~~`Cancellation` 映射~~——随单线程 runOnce 模型解决（见 §三 订正）：取消在
    两次 runOnce 之间调 `sessionShutdown`，同线程、无竞态；及时性待真机量一下；
-3. 进度粒度：轮询周期取多少才能既喂饱 `onProgress` 又不把 JNI 调用变成热点；
-4. `.meta` 与 aria2 自己的 `.aria2` 控制文件的关系——形态 1 下续传状态以谁为准
-   （倾向：完全交给 aria2，`.meta` 只在 core 路径存在）；
+3. ~~进度粒度~~——已定：每圈 runOnce 后查一次进度（runOnce 会阻塞到有事件，
+   不空转），对 Listener 的回调按 200ms 节流；
+4. ~~`.meta` 与 `.aria2` 的关系~~——已定：aria2 路径的续传完全交给它自己的
+   `.aria2` 控制文件（临时产物 `.a2part`），`.meta` 只在 core 路径存在；
 5. 依赖面裁剪：配方按已验证形态保留了 libxml2/sqlite3/libssh2（metalink、
    Firefox cookie、SFTP），对一个 HTTP 下载后端未必都需要——裁剪能明显缩小
    `.so` 与构建时长，但每裁一刀都是对已验证配方的偏离，等 CI 首跑通了再议。

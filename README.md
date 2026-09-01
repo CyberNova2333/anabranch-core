@@ -72,9 +72,10 @@ test/SingleSourceTest.java   单源：分块、续传、校验、Range 缺失（
 test/MultiSourceTest.java    多源：选路、切源、跨源续传、预算、退避（33 项）
 test/ThrottleTest.java       限速与测速（13 项）
 
-aria2/                       anabranch-aria2 后端的设计稿落点（独立 artifact，
-                             不进 core jar）：dead-man's switch 已实现并带测试
-                             （10 项），其余为骨架。见 docs/ARIA2.md
+aria2/                       anabranch-aria2 后端（独立 artifact，不进 core jar）：
+                             Aria2Downloader 已实现，28 项真下载测试载入真 libaria2
+                             跑（sh aria2/native/run-host-tests.sh）；dead-man's
+                             switch 带 10 项测试。见 docs/ARIA2.md
 ```
 
 ## 三个刻意的决定

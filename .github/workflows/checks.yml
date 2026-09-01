@@ -49,6 +49,30 @@ jobs:
           done
           echo "两轮复跑通过"
 
+  aria2-backend:
+    name: aria2 后端（宿主构建 + 真下载测试）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 宿主 aria2 静态库编一次要几分钟，按「aria2 版本 + 构建脚本」缓存；
+      # 胶水（aria2_jni.cpp）改动只触发秒级重链，不掉缓存。
+      - uses: actions/cache@v4
+        with:
+          path: |
+            aria2/out-host/aria2-src
+            aria2/out-host/aria2-build
+          key: aria2-host-${{ hashFiles('aria2/native/build-host.sh') }}
+
+      - name: 宿主构建 + 真下载测试
+        run: sh aria2/native/run-host-tests.sh
+
   commit-messages:
     name: 提交信息
     runs-on: ubuntu-latest

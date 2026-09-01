@@ -118,6 +118,13 @@ sh tools/run-checks.sh
 3. **四套测试**：`SingleSourceTest`（21 项）+ `MultiSourceTest`（33 项）
    + `ThrottleTest`（13 项）+ `Aria2FailoverTest`（10 项，纯文件 IO），共 77 项。
 
+改了 `aria2/` 下的后端代码，另跑一条（不在 run-checks 里，需要 C++ 工具链，
+首次约几分钟、之后秒级增量）：
+
+```bash
+sh aria2/native/run-host-tests.sh   # 宿主编译真 libaria2 + 28 项真下载测试
+```
+
 第 1 步里有一条容易被忽略的：`javac --release 8` 单独编一遍 core。这比任何静态
 检查都强——minSdk 21 的实际含义就是「core 的字节码必须是 Java 8 能吃下的」，
 而 `--release` 会连**类库**一起限制住，误用 `java.util.function` 这类 API 24+

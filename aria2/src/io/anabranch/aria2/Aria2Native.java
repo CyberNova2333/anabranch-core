@@ -43,6 +43,17 @@ final class Aria2Native {
     /** 进度：{completedBytes, totalBytes, downloadSpeed}；gid 不存在返回 null。 */
     static native long[] progressOf(long session, String gid);
 
+    /** 下载状态。gid 不存在返回 -1。 */
+    static native int statusOf(long session, String gid);
+
+    // statusOf 的返回值（在 JNI 侧显式映射，不依赖 aria2 枚举的编号不变）：
+    static final int STATUS_ACTIVE = 0;
+    static final int STATUS_WAITING = 1;
+    static final int STATUS_PAUSED = 2;
+    static final int STATUS_COMPLETE = 3;
+    static final int STATUS_ERROR = 4;
+    static final int STATUS_REMOVED = 5;
+
     /** 该 gid 的错误描述；没出错返回 null。 */
     static native String errorOf(long session, String gid);
 }
