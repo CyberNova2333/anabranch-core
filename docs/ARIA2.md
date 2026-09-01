@@ -56,11 +56,23 @@ aria2 原生就是多源下载器：`addUri([url1, url2, …])` 一条下载挂 
 - 进度经 libaria2 的事件/轮询接口喂给 `Listener`，单位与语义与 core 一致
   （字节/秒、最近窗口速度）。
 
-### 形态 2（实验，待真机实测）：`Aria2Engine implements Engine`
+### 形态 2：`Aria2Engine implements Engine`——已实测判死（2026-09-01）
 
-若实测发现「`split=1` + 单连接 + 自定义 `Range` 头」在目标 aria2 版本上行为
-可靠，则 Engine 形态复活：anabranch 全套调度 + native 传输，这是理想态。
-骨架里保留 `Aria2Engine` 占位与这条判据；**实测不过就删掉它**，不留半活的路径。
+原计划：若「`split=1` + 单连接 + 自定义 `Range` 头」在目标 aria2 版本上行为
+可靠，则 Engine 形态复活。实测（aria2 1.37.0，对着会记录请求头的本地 HTTP
+服务器）结果比预判还糟一档：
+
+- aria2 确实把自定义 `Range: bytes=1000-1999` **原样发出**，也把服务端返回的
+  1000 字节正确写进了输出文件——到这里看似可行；
+- 但它把 206 响应 `Content-Range` 里的**总长**（`…/10000`）当作预期下载量，
+  认为还差 9000 字节，于是**无限等待**：不报错、不退出、留下 `.aria2` 控制
+  文件。对照组（无自定义头）完全正常。
+
+挂起而不是报错，是下载库最坏的失败形态——连「失败了换条路」的机会都没有。
+按本节原来立的规矩执行：`Aria2Engine` 已删除，不留半活的路径。基线形态
+（`Aria2Downloader`）是唯一形态。桌面版与交叉编译版行为一致性由「钉住同一
+aria2 版本」保证；若将来换的版本在 changelog 里明确改了 Range 语义，可以
+重开这个实验，判据与复现步骤如上。
 
 ## 三、进程内 libaria2，不是子进程 aria2c
 
@@ -112,7 +124,7 @@ aria2 原生就是多源下载器：`addUri([url1, url2, …])` 一条下载挂 
 | `BackendSelector` | 接口，定稿 | 上一节的四个方法 |
 | `FileBackendSelector` | **完整实现 + 测试** | 落盘协议如上；无 nio.file（minSdk 21 同样适用） |
 | `Aria2Downloader` | 骨架 | 形态 1 的公共面；native 未接入前抛 `UnsupportedOperationException` |
-| `Aria2Engine` | 骨架（实验） | 形态 2；实测不过就删 |
+| `Aria2Engine` | **已删除** | 形态 2 实测判死（见 §二），按「不留半活路径」的规矩移除 |
 | `Aria2Native` | JNI 表面 | libaria2 C API 的最小子集：session 建立/关停、addUri、轮询进度 |
 
 `aria2/` 的源码同样跑 `--release 8` 编译（Android artifact，minSdk 21 的约束
@@ -135,8 +147,7 @@ aria2 原生就是多源下载器：`addUri([url1, url2, …])` 一条下载挂 
 
 ## 八、开放问题
 
-1. **Range 实测**（决定形态 2 存亡）：目标 aria2 版本上 `split=1` + 自定义
-   Range 头的真实行为；
+1. ~~Range 实测（决定形态 2 存亡）~~——已做，形态 2 判死，见 §二；
 2. `Cancellation` 映射：libaria2 的 shutdown 语义是否够及时，还是要按 gid 逐个
    remove；
 3. 进度粒度：轮询周期取多少才能既喂饱 `onProgress` 又不把 JNI 调用变成热点；
