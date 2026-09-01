@@ -2,7 +2,7 @@
 # 构建 libaria2-{openssl,gnutls}.so（anabranch-aria2 的进程内 libaria2，
 # 双 ABI × 双 TLS 后端）。配方来自早先在另一个项目里逐坑验证过的构建，
 # 版本全部钉死；本脚本的差异只在胶水层：走 libaria2 公开 API
-# （--enable-libaria2），导出 anabranch 自己的 8 个 JNI 符号。
+# （--enable-libaria2），导出 anabranch 自己的 9 个 JNI 符号。
 #
 # 用法（源码目录由调用方解压好，见 .github/workflows/build-aria2.yml）：
 #   NDK=<ndk路径> \
@@ -15,7 +15,7 @@
 #  - minSdk 21、双 ABI；armv7 加 -D_LIBCPP_HAS_NO_OFF_T_FUNCTIONS 且链接
 #    compat_arm.c（32 位 bionic 的 fseeko/ftello 是 API 24，见该文件头注）。
 #  - 所有静态库 -fPIC（要进共享库）。
-#  - -fvisibility=hidden + -Wl,-Bsymbolic + version script：只导出 8 个 JNI
+#  - -fvisibility=hidden + -Wl,-Bsymbolic + version script：只导出 9 个 JNI
 #    入口 @@ANABRANCH_ARIA2_1.0，TLS 库符号零泄漏（GLOBAL 暴露的 OpenSSL
 #    符号会被进程内其它 libssl 抢占污染而崩）。
 #  - -Wl,-z,max-page-size=16384：LOAD 段 p_align=0x4000，16KB 页设备可加载。
@@ -286,8 +286,8 @@ verify_so() { # verify_so <so路径> <abi>
     soname="$("$RE" -d "$so" | sed -n 's/.*SONAME.*\[\(.*\)\]/\1/p')"
     [ "$soname" = "$base" ] || { echo "✗ $base SONAME=$soname ≠ $base"; exit 1; }
 
-    # 3) 导出符号恰 8 个 JNI 入口（符号卫生硬指标）。version script 给它们打
-    #    @@ANABRANCH_ARIA2_1.0 版本节点，对拍剥掉后缀只验身份——恰这 8 个。
+    # 3) 导出符号恰 9 个 JNI 入口（符号卫生硬指标）。version script 给它们打
+    #    @@ANABRANCH_ARIA2_1.0 版本节点，对拍剥掉后缀只验身份——恰这 9 个。
     local exports
     exports="$("$NM" -D --defined-only "$so" | awk '{print $NF}' | grep -v '^$' | sed 's/@@.*//' | sort)"
     local expect
@@ -299,6 +299,7 @@ verify_so() { # verify_so <so路径> <abi>
         Java_io_anabranch_aria2_Aria2Native_addUri \
         Java_io_anabranch_aria2_Aria2Native_runOnce \
         Java_io_anabranch_aria2_Aria2Native_progressOf \
+        Java_io_anabranch_aria2_Aria2Native_statusOf \
         Java_io_anabranch_aria2_Aria2Native_errorOf | sort)"
     [ "$exports" = "$expect" ] || { echo "✗ $base 导出符号异常:"; diff <(echo "$expect") <(echo "$exports") || true; exit 1; }
 

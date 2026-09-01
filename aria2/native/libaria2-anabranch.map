@@ -7,6 +7,7 @@ ANABRANCH_ARIA2_1.0 {
     Java_io_anabranch_aria2_Aria2Native_addUri;
     Java_io_anabranch_aria2_Aria2Native_runOnce;
     Java_io_anabranch_aria2_Aria2Native_progressOf;
+    Java_io_anabranch_aria2_Aria2Native_statusOf;
     Java_io_anabranch_aria2_Aria2Native_errorOf;
   local:
     *;

@@ -12,7 +12,7 @@
 //    坑；坏选项在 sessionNew/addUri 里以返回值/异常暴露，全部兜在 try/catch
 //    里——异常绝不能穿出 JNI 边界。
 //
-// 符号卫生：本文件只暴露 8 个 JNI 入口（version script libaria2-anabranch.map
+// 符号卫生：本文件只暴露 9 个 JNI 入口（version script libaria2-anabranch.map
 // 强制 + -fvisibility=hidden + -Wl,-Bsymbolic）。TLS 库符号一个都不许泄漏——
 // 以 GLOBAL 暴露的 OpenSSL 符号会被进程内其它 libssl 抢占污染，崩起来没有
 // 行号可看。
@@ -22,11 +22,23 @@
 #include <string>
 #include <vector>
 
-#include <android/log.h>
 #include <aria2/aria2.h>
 
+// 日志按平台走：Android 进 logcat；宿主（桌面 JVM 上跑真下载测试用）进 stderr。
+// 同一份胶水两边编译，测试测到的才是发货的那份逻辑。
+#if defined(__ANDROID__)
+#include <android/log.h>
 #define LOG_TAG "anabranch-aria2"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#else
+#include <cstdio>
+#define LOGE(...)                            \
+  do {                                       \
+    std::fprintf(stderr, "[anabranch-aria2] "); \
+    std::fprintf(stderr, __VA_ARGS__);       \
+    std::fprintf(stderr, "\n");              \
+  } while (0)
+#endif
 
 // 构建标记：strings 级可探测，核验设备上的库出自本构建链。
 // __attribute__((used)) 防被 LTO/GC 丢弃。
@@ -183,6 +195,39 @@ Java_io_anabranch_aria2_Aria2Native_progressOf(JNIEnv* env, jclass,
   } catch (...) {
     LOGE("progressOf threw");
     return nullptr;
+  }
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_io_anabranch_aria2_Aria2Native_statusOf(JNIEnv* env, jclass, jlong session,
+                                             jstring gidHex) {
+  if (session == 0 || gidHex == nullptr) return -1;
+  try {
+    const char* hex = env->GetStringUTFChars(gidHex, nullptr);
+    if (hex == nullptr) return -1;
+    aria2::A2Gid gid = aria2::hexToGid(hex);
+    env->ReleaseStringUTFChars(gidHex, hex);
+    if (aria2::isNull(gid)) return -1;
+
+    aria2::DownloadHandle* h = aria2::getDownloadHandle(
+        reinterpret_cast<aria2::Session*>(session), gid);
+    if (h == nullptr) return -1;
+    aria2::DownloadStatus st = h->getStatus();
+    aria2::deleteDownloadHandle(h);
+
+    // 显式映射，不赌 aria2 枚举编号永远不变（Java 侧常量与此一一对应）。
+    switch (st) {
+      case aria2::DOWNLOAD_ACTIVE:   return 0;
+      case aria2::DOWNLOAD_WAITING:  return 1;
+      case aria2::DOWNLOAD_PAUSED:   return 2;
+      case aria2::DOWNLOAD_COMPLETE: return 3;
+      case aria2::DOWNLOAD_ERROR:    return 4;
+      case aria2::DOWNLOAD_REMOVED:  return 5;
+    }
+    return -1;
+  } catch (...) {
+    LOGE("statusOf threw");
+    return -1;
   }
 }
 
