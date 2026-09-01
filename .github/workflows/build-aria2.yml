@@ -9,6 +9,11 @@ name: 构建 libaria2（双 TLS 后端）
 # 同等级对待）。配方细节与纪律见 aria2/native/build-aria2.sh 头注。
 on:
   workflow_dispatch:
+    inputs:
+      slim:
+        description: '裁剪构建：去 libxml2/SQLite/libssh2（gnutls 后端随之不含 OpenSSL）。功能面已被宿主真下载测试验证；默认全量=已验证配方'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -86,19 +91,30 @@ jobs:
           echo "ZLIB_SRC=$PWD/zlib-src"       >> "$GITHUB_ENV"
 
       - name: 构建双 ABI × 双后端（含构建后自检）
+        env:
+          ARIA2_SLIM: ${{ inputs.slim && '1' || '' }}
         run: bash aria2/native/build-aria2.sh
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 组装 AAR（classes.jar + jni/*.so + NOTICES）
+        run: bash aria2/native/package-aar.sh out out/anabranch-aria2-0.1.0.aar
 
       - name: 产物 sha256 清单
         run: |
           cd out
-          sha256sum */libaria2-*.so | tee SHA256SUMS.txt
+          sha256sum */libaria2-*.so *.aar | tee SHA256SUMS.txt
 
-      - name: 上传产物（.so + 清单 + 构建日志）
+      - name: 上传产物（.so + AAR + 清单 + 构建日志）
         uses: actions/upload-artifact@v4
         with:
-          name: libaria2-so
+          name: libaria2-so${{ inputs.slim && '-slim' || '' }}
           path: |
             out/*/libaria2-*.so
+            out/*.aar
             out/SHA256SUMS.txt
             out/logs/
           if-no-files-found: error

@@ -170,8 +170,20 @@ aria2 1.37.0——与 §二 Range 实测钉的是同一版本。配方来自早�
 差异只在胶水层：`--enable-libaria2` 走公开 API、导出符号换成 anabranch 的 8 个、
 去掉了不需要的控制台日志补丁。
 
-剩余（按序）：CI 首跑验证 → 真机装载与下载验证 → AAR 打包 → 二进制分发前
-落实 GPL 义务（第三方 NOTICES、构建可复现说明）。
+同一 workflow 会把产物组装成 **AAR**（`package-aar.sh`：classes.jar 只装
+`io.anabranch.aria2.*`，core 是独立依赖；`jni/<abi>/*.so`；
+THIRD-PARTY-NOTICES.md 打进 AAR 根，GPL 义务随产物走）。整体许可结论与
+组件清单见 [`../aria2/THIRD-PARTY-NOTICES.md`](../aria2/THIRD-PARTY-NOTICES.md)：
+二进制组合按 **GPL-3.0-or-later** 分发（aria2 GPLv2+，取 v3 以兼容
+Apache-2.0 的胶水），纯 Java 路线的使用者零牵连。
+
+**裁剪构建**（workflow 的 `slim` 输入 / 本地 `ARIA2_SLIM=1`）：去
+libxml2/SQLite/libssh2，gnutls 后端随之不含 OpenSSL。功能面就是宿主测试
+构建那一份——28 项真下载测试全在其上跑过；默认仍是全量（已验证配方）。
+
+剩余（按序）：真机装载与下载验证（.so 与 AAR）→ 定裁剪版还是全量版作为
+发布形态 → anabranch-aria2 的 Maven 坐标与发布（AAR 上 Central 需要
+`packaging=aar` 的 POM，届时并进 RELEASING.md）。
 
 ## 七、测试（已落地）
 
@@ -197,6 +209,7 @@ aria2 1.37.0——与 §二 Range 实测钉的是同一版本。配方来自早�
    不空转），对 Listener 的回调按 200ms 节流；
 4. ~~`.meta` 与 `.aria2` 的关系~~——已定：aria2 路径的续传完全交给它自己的
    `.aria2` 控制文件（临时产物 `.a2part`），`.meta` 只在 core 路径存在；
-5. 依赖面裁剪：配方按已验证形态保留了 libxml2/sqlite3/libssh2（metalink、
-   Firefox cookie、SFTP），对一个 HTTP 下载后端未必都需要——裁剪能明显缩小
-   `.so` 与构建时长，但每裁一刀都是对已验证配方的偏离，等 CI 首跑通了再议。
+5. ~~依赖面裁剪~~——已落成构建开关（`ARIA2_SLIM=1` / workflow 的 `slim`
+   输入），功能面与宿主测试构建一致；全量仍是默认。**尚待决**：真机验证后
+   选哪个当发布形态（裁剪版体积与依赖面小得多，但全量版才是逐字节的已验证
+   配方）。
