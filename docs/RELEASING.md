@@ -44,17 +44,35 @@ for i in 1 2 3 4; do sh tools/run-checks.sh >/dev/null && echo "第 $i 轮 ok"; 
 # 3. 构建 + 交叉验证（gradle build 会把三套测试再跑一遍）
 gradle build
 
-# 4. 出签名产物：完整仓库布局（jar/sources/javadoc/pom/module + .asc + 校验和）
-gradle publishMavenPublicationToLocalStagingRepository
+# 4. 一条命令出上传包：清 staging → 签名发布全部 publication → 打 zip
+#    （产物布局、.asc 与四类校验和齐全，maven-metadata 已按 Portal 要求排除；
+#    这条流程已用一次性测试 key 端到端验证过，含 gpg --verify）
+gradle centralBundle
 
-# 5. 打包上传
-cd build/staging && zip -r ../anabranch-core-bundle.zip io && cd -
-# 到 central.sonatype.com → Publish → Upload Bundle，传 build/anabranch-core-bundle.zip
-# Portal 校验通过后手动点 Publish——这一步之后就撤不回了，撤回等于发一个新版本。
+# 5. 到 central.sonatype.com → Publish → Upload Bundle，传 build/central-bundle.zip
+#    Portal 校验通过后手动点 Publish——这一步之后就撤不回了，撤回等于发一个新版本。
 
 # 6. 落锚点：提交版本号改动，打 tag
 git tag v<版本号> && git push origin v<版本号>
 ```
+
+## 一·五、连 anabranch-aria2（AAR）一起发布时
+
+AAR 由 CI 组装（build-aria2.yml，本地 Gradle 编不出 .so 也不该编）。多两步：
+
+```bash
+# 1. 从选定的构建 run 下载 artifact（libaria2-so 或 libaria2-so-slim），
+#    把里面的 anabranch-aria2-<版本>.aar 放到：
+mkdir -p aria2/dist && cp <下载目录>/anabranch-aria2-<版本>.aar aria2/dist/
+
+# 2. 照常 gradle centralBundle——检测到该文件就会把 anabranch-aria2 一起
+#    打进 bundle（packaging=aar、依赖同版 core、许可 GPL-3.0-or-later，
+#    sources/javadoc jar 由 Gradle 现出）。
+```
+
+发布 AAR 前核对 aria2/THIRD-PARTY-NOTICES.md §三 的义务清单（NOTICES 已在
+AAR 内，分发页面还需注明许可与源码获取方式）。**真机验证没过之前别发 AAR**
+——core 可以先单独发，aria2/dist/ 里没有文件时 centralBundle 只出 core。
 
 ## 二、发布后核对
 
