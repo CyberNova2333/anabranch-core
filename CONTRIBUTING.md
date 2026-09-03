@@ -96,7 +96,7 @@ Maven Central 时再加，那时它才付出与成本相称的价值。
 很紧，原来的理由依然成立：
 
 - Gradle 只管**打包与发布**：jar + sources + javadoc + POM + 签名，坐标
-  `io.anabranch:anabranch-core`。步骤见 [docs/RELEASING.md](docs/RELEASING.md)。
+  `io.github.cybernova2333:anabranch-core`（Maven group 与 Java 包名 `io.anabranch` 无绑定关系）。步骤见 [docs/RELEASING.md](docs/RELEASING.md)。
 - 开发循环仍然以 `tools/run-checks.sh` 为准，CI 跑的也是它，不是 Gradle。
   `gradle build` 会把三套测试当 JavaExec 再跑一遍（少 core 边界检查那一步），
   可当交叉验证，不是提交门槛。
