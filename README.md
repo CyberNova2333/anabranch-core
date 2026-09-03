@@ -15,7 +15,7 @@
 预定的 Maven Central 坐标（**尚未发布**，发布步骤见 [docs/RELEASING.md](docs/RELEASING.md)）：
 
 ```
-io.anabranch:anabranch-core:0.1.0
+io.github.cybernova2333:anabranch-core:0.1.0
 ```
 
 Java 8 字节码；Android 上 minSdk 21，不需要 core library desugaring。
@@ -23,7 +23,7 @@ Java 8 字节码；Android 上 minSdk 21，不需要 core library desugaring。
 ## 怎么跑
 
 ```bash
-sh tools/run-checks.sh    # Java 8 编译 → 全量编译 → core 边界 → 三套测试
+sh tools/run-checks.sh    # Java 8 编译 → 全量编译 → core 边界 → 四套测试
 ```
 
 core 的三个套件都**真起本地 HTTP 服务器、真下文件**；多源那套起三台，可以随时
@@ -138,7 +138,8 @@ etag 不一致只当提示**——尺寸不同才是真的不同。
 
 ## 已知的欠账（第 1 步刻意没做）
 
-- **aria2 后端**：还没做，将来必须是独立 artifact（见「许可」）。
+- **aria2 后端的真机验证与 AAR 发布**：Java 侧与交叉编译已完成（见 docs/ARIA2.md），
+  等真机验证过再作为独立 artifact 发布（见「许可」）。
 - **不支持 Range 时无法续传**：退化成单流整份下，中断就得重来。这是协议限制，
   没法绕过（失败时至少不再留下用不上的 `.part`/`.meta` 了）。
 - **目录 fsync** 用的是「建一个临时文件再 sync」的土办法，Java 没有直接 API。

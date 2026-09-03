@@ -7,14 +7,14 @@
 
 ### 1. Central Portal 账号与命名空间
 
-在 [central.sonatype.com](https://central.sonatype.com) 注册账号，然后**验证命名空间**：
+在 [central.sonatype.com](https://central.sonatype.com) 注册账号，然后**验证命名空间**
+`io.github.cybernova2333`：Portal 会给一个临时仓库名，在 GitHub 账号下建一个同名
+公开仓库即完成验证，几分钟的事，验证后可删。
 
-- 首选 group `io.anabranch`：要求证明对 **anabranch.io 域名**的控制权（加一条
-  DNS TXT 记录，Portal 会给出具体值）。
-- **域名不在手里就别硬凑**：退路是把 `build.gradle.kts` 里的 `group` 改成
-  `io.github.cybernova2333`（GitHub 账号即可验证，几分钟的事）。
-  Java 包名 `io.anabranch` **不用跟着改**——Maven group 与包名没有绑定关系，
-  `io.github.cybernova2333:anabranch-core` 里装 `io.anabranch.*` 完全合法。
+group 与 Java 包名（`io.anabranch`）没有绑定关系——
+`io.github.cybernova2333:anabranch-core` 里装 `io.anabranch.*` 完全合法。刻意不用
+`io.anabranch` 做 group：那要证明对 anabranch.io 域名的控制权，而这个库不打算
+背一个域名。
 
 ### 2. GPG 签名 key
 

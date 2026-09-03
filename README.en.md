@@ -33,7 +33,7 @@ scheduling".
 Planned for Maven Central (not yet published):
 
 ```
-io.anabranch:anabranch-core:0.1.0
+io.github.cybernova2333:anabranch-core:0.1.0
 ```
 
 Requires Java 8+ bytecode support; on Android, minSdk 21. No runtime library

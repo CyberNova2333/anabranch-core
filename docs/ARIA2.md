@@ -28,7 +28,7 @@
   将来含 `.so` 的**二进制分发**整体按 GPL 的义务走（提供对应源码与构建脚本）。
 - **先同仓孵化**（`aria2/` 子目录，独立源树、不进 core jar、Gradle 不碰它），
   共用这里的守卫与钩子；发不发独立仓库等 native 侧成型再定。发布形态是 AAR
-  （要装 `.so`），坐标预定 `io.anabranch:anabranch-aria2`。
+  （要装 `.so`），坐标预定 `io.github.cybernova2333:anabranch-aria2`。
 
 ## 二、集成形态：Engine 假设的修正（本稿最重要的一节）
 
