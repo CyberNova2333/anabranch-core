@@ -107,13 +107,49 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 组装 AAR（classes.jar + jni/*.so + NOTICES）
-        run: bash aria2/native/package-aar.sh out out/anabranch-aria2-0.1.0.aar
+      # GPL/OpenSSL/BSD/MIT 都要求二进制分发附许可与版权原文——从 pinned 源码里
+      # 原样抽出来打进 AAR，缺一份就失败。
+      - name: 收集各组件许可原文
+        env:
+          ARIA2_SLIM: ${{ inputs.slim && '1' || '' }}
+        run: bash aria2/native/collect-licenses.sh out/licenses
+
+      - name: 组装 AAR（classes.jar + jni/*.so + NOTICES + META-INF/licenses）
+        run: bash aria2/native/package-aar.sh out out/anabranch-aria2-0.1.0.aar out/licenses
+
+      # GPLv3 §6 的「对应源码」：分发 .so 就得让同一份源码持续可得。不能只靠上游
+      # 服务器（URL 会挪），所以把 9 个 pinned tarball（原文件，sha256 不变）+ 本
+      # commit 的胶水与构建脚本打成一个包，发版时作为 GitHub Release 资产与 AAR
+      # 并列存放。
+      - name: 打对应源码包
+        run: |
+          set -euo pipefail
+          cs=corresponding-source
+          mkdir -p "$cs/upstream" "$cs/anabranch"
+          cp aria2.tar.gz openssl.tar.gz gmp.tar.xz nettle.tar.gz gnutls.tar.xz \
+             libxml2.tar.xz libssh2.tar.gz sqlite.tar.gz zlib.tar.gz "$cs/upstream/"
+          cp -r aria2/native aria2/src aria2/THIRD-PARTY-NOTICES.md "$cs/anabranch/"
+          cp .github/workflows/build-aria2.yml "$cs/anabranch/"
+          ( cd "$cs/upstream" && sha256sum * > SHA256SUMS.txt )
+          {
+            echo "anabranch-aria2 对应源码包（GPLv3 §6）"
+            echo
+            echo "仓库 commit：${GITHUB_SHA}"
+            echo "构建面：${{ inputs.slim && '裁剪（ARIA2_SLIM=1）' || '全量' }}"
+            echo "upstream/：静态链接进 .so 的全部上游源码 tarball（原文件；sha256 与 build-aria2.yml 硬校验值一致）"
+            echo "anabranch/：本仓库该 commit 的 JNI 胶水、Java 侧源码、构建脚本与 workflow"
+            echo
+            echo "复现：解压 upstream/ 各包，按 anabranch/build-aria2.yml 的步骤设置 NDK r25c 与 *_SRC 环境变量，"
+            echo "      运行 anabranch/native/build-aria2.sh；产物自检通过即与发布的 .so 功能面一致。"
+            echo "许可：组合体按 GPL-3.0-or-later 分发，组件清单与原文见 anabranch/THIRD-PARTY-NOTICES.md 与 AAR 内 META-INF/licenses/。"
+          } > "$cs/README.txt"
+          tar czf "out/anabranch-aria2-0.1.0-corresponding-source${{ inputs.slim && '-slim' || '' }}.tar.gz" "$cs"
+          ls -la out/*.tar.gz
 
       - name: 产物 sha256 清单
         run: |
           cd out
-          sha256sum */libaria2-*.so *.aar | tee SHA256SUMS.txt
+          sha256sum */libaria2-*.so *.aar *.tar.gz | tee SHA256SUMS.txt
 
       - name: 上传产物（.so + AAR + 清单 + 构建日志）
         uses: actions/upload-artifact@v4
@@ -125,3 +161,11 @@ jobs:
             out/SHA256SUMS.txt
             out/logs/
           if-no-files-found: error
+
+      - name: 上传对应源码包
+        uses: actions/upload-artifact@v4
+        with:
+          name: anabranch-aria2-corresponding-source${{ inputs.slim && '-slim' || '' }}
+          path: out/*-corresponding-source*.tar.gz
+          if-no-files-found: error
+          retention-days: 90

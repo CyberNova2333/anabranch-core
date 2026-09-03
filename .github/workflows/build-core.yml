@@ -203,6 +203,37 @@ jobs:
           git tag -a "v${VERSION}" -m "anabranch-core ${VERSION}（Central 部署 ${DEPLOYMENT_ID}）"
           git push origin "v${VERSION}"
 
+      - name: 取本 run 的 aria2 对应源码包
+        if: ${{ inputs.release && inputs.include_aria2 }}
+        uses: actions/download-artifact@v4
+        with:
+          name: anabranch-aria2-corresponding-source${{ inputs.aria2_slim && '-slim' || '' }}
+          path: dist
+
+      # GitHub Release 是「对应源码」的指定存放处（GPLv3 §6(d)）：AAR 与它的
+      # 对应源码包并列挂在同一个 Release 下，NOTICES 与 POM 都指向这里。
+      # 只发 core 时也建 Release（挂签名 bundle 备查），版本锚点统一。
+      - name: 建 GitHub Release
+        if: ${{ inputs.release }}
+        env:
+          : ${{ github.token }}
+          INCLUDE_ARIA2: ${{ inputs.include_aria2 }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Maven Central：\`io.github.cybernova2333:anabranch-core:${VERSION}\`（Central 部署 ${DEPLOYMENT_ID}）"
+            if [ "$INCLUDE_ARIA2" = "true" ]; then
+              echo
+              echo "anabranch-aria2：\`io.github.cybernova2333:anabranch-aria2:${VERSION}\`（AAR，GPL-3.0-or-later）。"
+              echo "本 Release 附带其**对应源码包**（anabranch-aria2-*-corresponding-source*.tar.gz）：静态链接的全部上游 tarball + 该 commit 的胶水与构建脚本，见包内 README.txt 与 AAR 内 THIRD-PARTY-NOTICES.md。"
+            fi
+          } > release-notes.md
+          assets=( "dist/anabranch-${VERSION}-central-bundle.zip" )
+          if [ "$INCLUDE_ARIA2" = "true" ]; then
+            assets+=( aria2/dist/*.aar dist/*-corresponding-source*.tar.gz )
+          fi
+          gh release create "v${VERSION}" --title "v${VERSION}" --notes-file release-notes.md "${assets[@]}"
+
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:

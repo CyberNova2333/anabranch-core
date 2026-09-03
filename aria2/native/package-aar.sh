@@ -4,14 +4,19 @@
 #
 # classes.jar 只装 io.anabranch.aria2.*：anabranch-core 是独立依赖，把它的
 # 类打进来会让使用者 classpath 里出现两份 core（铁律 4 的 artifact 边界）。
-# THIRD-PARTY-NOTICES.md 打进 AAR 根——GPL 义务随产物走，不靠人记得附带。
+# THIRD-PARTY-NOTICES.md 打进 AAR 根、各组件许可原文打进 META-INF/licenses/
+# （collect-licenses.sh 的产物）——GPL 义务随产物走，不靠人记得附带。
 #
-# 用法: bash aria2/native/package-aar.sh <so目录> <输出.aar>
+# 用法: bash aria2/native/package-aar.sh <so目录> <输出.aar> <licenses目录>
 #   <so目录> 布局: <abi>/libaria2-{openssl,gnutls}.so（build-aria2.sh 的 out/）
+#   <licenses目录>: collect-licenses.sh 的输出；必填——没有许可原文的 AAR 不该存在
 set -euo pipefail
 
-SODIR="${1:?用法: package-aar.sh <so目录> <输出.aar>}"
-OUT="${2:?用法: package-aar.sh <so目录> <输出.aar>}"
+usage="用法: package-aar.sh <so目录> <输出.aar> <licenses目录>"
+SODIR="${1:?$usage}"
+OUT="${2:?$usage}"
+LICDIR="${3:?$usage}"
+[ -f "$LICDIR/INDEX.txt" ] || { echo "✗ $LICDIR 不是 collect-licenses.sh 的输出（缺 INDEX.txt）"; exit 1; }
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 case "$OUT" in /*) ;; *) OUT="$(pwd)/$OUT" ;; esac
 
@@ -43,6 +48,8 @@ cat > "$work/aar/AndroidManifest.xml" <<'EOF'
 EOF
 : > "$work/aar/R.txt"
 cp "$ROOT/aria2/THIRD-PARTY-NOTICES.md" "$work/aar/"
+mkdir -p "$work/aar/META-INF/licenses"
+cp -r "$LICDIR"/. "$work/aar/META-INF/licenses/"
 
 rm -f "$OUT"
 ( cd "$work/aar" && zip -qr "$OUT" . )

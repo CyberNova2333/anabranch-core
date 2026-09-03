@@ -125,8 +125,9 @@ secret 的令牌（Actions 自带的 `` 没这个权限）：
 （已发布版本的签名仍可验证）。私钥不设过期，理由写在 workflow 头注。
 
 workflow 的前置核对会拒绝：缺 secret、版本号带 `-SNAPSHOT`、`v<版本>` tag 已存在
-（同一版本发过了，改版本号再来）。发版成功后 artifact 里附一份签名过的
-bundle zip 备查。
+（同一版本发过了，改版本号再来）。发版成功后会建 GitHub Release `v<版本>`：
+挂签名过的 bundle zip 备查；勾了 `include_aria2` 时还挂 AAR 与它的**对应源码包**
+——这是 GPL 义务的落点（THIRD-PARTY-NOTICES.md §一），别手动删这些资产。
 
 安全边界：私钥只在 runner 内存里活一次 job，GitHub 对 secret 做日志遮蔽；
 Portal 令牌可随时在 Portal 撤销重发。真要收回发版口，删掉那四个 secret 即可
