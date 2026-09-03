@@ -1,0 +1,73 @@
+name: 构建 anabranch-core
+
+# 出 anabranch-core 的发布构件（jar / sources / javadoc / POM / Gradle module）
+# 塞进 workflow artifact。**未签名**：GPG 签名与 Central 上传只在维护者本机做
+# （docs/RELEASING.md），CI 里没有私钥、也不该有——这条 workflow 是「不用本地装
+# Gradle 也能拿到构件」的取用口，不是发版口，与「不做自动发版」不冲突。
+#
+# 触发：推 main（顺手出一份，短保留）、打 v* tag（发布锚点，长保留）、手动。
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Gradle 构建 + Maven 布局
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 仓库刻意不放 wrapper（CONTRIBUTING「构建系统只管发布」），Gradle 版本在
+      # 这里钉死——与发布配置验证时用的是同一版。
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: 读取版本号
+        run: |
+          v="$(sed -n 's/^version = "\(.*\)"$/\1/p' build.gradle.kts)"
+          [ -n "$v" ] || { echo "::error::build.gradle.kts 里读不到 version"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "version=$v"
+
+      # gradle build = 编译（--release 8）+ javadoc/sources jar + 三套 core 测试
+      # 作为 check（与 run-checks.sh 同一批用例，少 core 边界检查那一步——那一步
+      # 在 checks.yml 里）。
+      - name: gradle build
+        run: gradle build
+
+      # 完整 Maven 布局落到本地仓库再收集：拿到的目录可以直接塞进 ~/.m2 或当
+      # flatDir/mavenLocal 用，不必等 Central。
+      - name: publishToMavenLocal（未签名）
+        run: gradle publishToMavenLocal
+
+      - name: 收集产物
+        run: |
+          set -euo pipefail
+          out=dist/anabranch-core-${VERSION}
+          mkdir -p "$out"
+          # 只收本仓库这个 group 的子树，且保留 io/github/... 的仓库根布局
+          mkdir -p "$out/maven-repo/io/github"
+          cp -r ~/.m2/repository/io/github/cybernova2333 "$out/maven-repo/io/github/"
+          cp build/libs/anabranch-core-*.jar "$out/"
+          ( cd "$out" && find . -type f ! -name SHA256SUMS.txt -exec sha256sum {} + | sort -k2 | tee SHA256SUMS.txt )
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: anabranch-core-${{ env.VERSION }}${{ startsWith(github.ref, 'refs/tags/') && '' || '-snapshot' }}
+          path: dist/
+          if-no-files-found: error
+          # 推 main 顺手出的那份留两周够用；tag 那份是发布锚点，留满 90 天。
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 90 || 14 }}
