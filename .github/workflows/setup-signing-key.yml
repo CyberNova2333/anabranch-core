@@ -1,0 +1,112 @@
+name: 生成 Maven 签名 key
+
+# 一次性：在 runner 上生成一把只服务于 Maven Central 签名的 GPG key，公钥传
+# keyserver，私钥与口令直接写进本仓库的 Actions secret——私钥从头到尾不经过任何
+# 人的电脑。之后 build-core.yml 勾 release 就能签名发版。
+#
+# 为什么要一个 PAT：Actions 自带的  没有写 secret 的权限。建一个
+# 细粒度 PAT（Repository access 只选本仓库；Permissions 只给 Secrets: Read and
+# write、Variables: Read and write），存成 secret SECRETS_WRITER_PAT，跑完本
+# workflow 就可以删掉它。
+#
+# 私钥不设过期：过期后 Central 会拒签旧版本的校验，而这把 key 只在 secret 里活着，
+# 真要换就再跑一次（勾 overwrite）——新 key 传 keyserver，旧 key 留在那里无害。
+on:
+  workflow_dispatch:
+    inputs:
+      uid_name:
+        description: 'key 的用户名'
+        type: string
+        default: 'CyberNova2333'
+      uid_email:
+        description: 'key 的邮箱（用 GitHub noreply 地址即可）'
+        type: string
+        default: '295488275+CyberNova2333@users.noreply.github.com'
+      overwrite:
+        description: '已有 MAVEN_GPG_PRIVATE_KEY 时也覆盖（换 key 用）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  keygen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      : ${{ secrets.SECRETS_WRITER_PAT }}
+    steps:
+      - name: 前置核对
+        run: |
+          set -euo pipefail
+          : "${:?缺 secret SECRETS_WRITER_PAT（细粒度 PAT，权限只需 Secrets/Variables 写）}"
+          if gh secret list -R "$GITHUB_REPOSITORY" | grep -q '^MAVEN_GPG_PRIVATE_KEY\b'; then
+            if [ "${{ inputs.overwrite }}" != "true" ]; then
+              echo "::error::MAVEN_GPG_PRIVATE_KEY 已存在。要换 key 请勾 overwrite"; exit 1
+            fi
+            echo "::warning::将覆盖已有的 MAVEN_GPG_PRIVATE_KEY / MAVEN_GPG_PASSPHRASE"
+          fi
+
+      - name: 生成 key（RSA 4096，随机口令，不过期）
+        run: |
+          set -euo pipefail
+          export GNUPGHOME="$(mktemp -d)"; chmod 700 "$GNUPGHOME"; echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          pass="$(head -c 32 /dev/urandom | base64 -w0)"
+          echo "::add-mask::$pass"
+          printf '%s' "$pass" > "$GNUPGHOME/pass.txt"
+          gpg --batch --pinentry-mode loopback --passphrase-file "$GNUPGHOME/pass.txt" \
+              --quick-gen-key "${{ inputs.uid_name }} <${{ inputs.uid_email }}>" rsa4096 sign 0
+          fpr="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')"
+          [ -n "$fpr" ] || { echo "::error::生成后找不到指纹"; exit 1; }
+          echo "GPG_FPR=$fpr" >> "$GITHUB_ENV"
+          echo "指纹：$fpr"
+
+      # Central 校验签名时去 keyserver 找公钥。ubuntu 这台是必须的（不要求邮箱
+      # 验证）；keys.openpgp.org 顺手也传一份，失败不算数。
+      - name: 公钥传 keyserver
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in 1 2 3; do
+            gpg --keyserver hkps://keyserver.ubuntu.com --send-keys "$GPG_FPR" && { ok=1; break; }
+            sleep 10
+          done
+          [ "$ok" = 1 ] || { echo "::error::公钥传 keyserver.ubuntu.com 失败——Central 会找不到它"; exit 1; }
+          gpg --keyserver hkps://keys.openpgp.org --send-keys "$GPG_FPR" || echo "::warning::keys.openpgp.org 未传成，不影响"
+          # 回读确认（keyserver 有时要几十秒才可查，重试）
+          for i in 1 2 3 4 5 6; do
+            sleep 10
+            gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys "$GPG_FPR" 2>/dev/null && { echo "keyserver 已可查到"; break; }
+          done
+
+      - name: 写入仓库 secret / variable
+        run: |
+          set -euo pipefail
+          gpg --batch --pinentry-mode loopback --passphrase-file "$GNUPGHOME/pass.txt" \
+              --armor --export-secret-keys "$GPG_FPR" \
+            | gh secret set MAVEN_GPG_PRIVATE_KEY -R "$GITHUB_REPOSITORY"
+          gh secret set MAVEN_GPG_PASSPHRASE -R "$GITHUB_REPOSITORY" < "$GNUPGHOME/pass.txt"
+          gh variable set MAVEN_GPG_FINGERPRINT -R "$GITHUB_REPOSITORY" --body "$GPG_FPR"
+          echo "已写入 secret：MAVEN_GPG_PRIVATE_KEY、MAVEN_GPG_PASSPHRASE；variable：MAVEN_GPG_FINGERPRINT"
+
+      - name: 公钥存档（artifact 里只有公钥）
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          gpg --armor --export "$GPG_FPR" > "out/maven-signing-${GPG_FPR}.pub.asc"
+          {
+            echo "## Maven 签名 key 已就绪"
+            echo
+            echo "- 指纹：\`$GPG_FPR\`"
+            echo "- UID：${{ inputs.uid_name }} <${{ inputs.uid_email }}>"
+            echo "- 已传 keyserver.ubuntu.com；私钥与口令已写入本仓库 secret"
+            echo "- 现在可以删掉 SECRETS_WRITER_PAT；Central 侧还差 CENTRAL_USERNAME / CENTRAL_PASSWORD（见 docs/RELEASING.md §四）"
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -rf "$GNUPGHOME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maven-signing-public-key
+          path: out/
+          retention-days: 90
