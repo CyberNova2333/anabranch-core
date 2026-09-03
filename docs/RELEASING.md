@@ -1,7 +1,8 @@
 # 发布手册（Maven Central）
 
-> 发布是**本机手动动作**，一年做不了几次。这份手册的读者是拿着签名 key 的维护者；
-> 仓库的「不做自动发版」原则不因 Gradle 的加入而改变——没有任何 CI 会替你发布。
+> 发布是**有意识的手动动作**，一年做不了几次。两条路等价：本机跑（§一）或
+> 在 GitHub Actions 里勾一下（§四）。「不做自动发版」在这里的含义是：没有任何
+> push/tag 事件能触发发布，发布只来自一个人的一次勾选或一条命令。
 
 ## 〇、一次性准备（只做一遍）
 
@@ -85,3 +86,33 @@ AAR 内，分发页面还需注明许可与源码获取方式）。**真机验�
 `0.x.y` 期间不承诺 API 稳定，但**落盘格式（`.meta`）的兼容性单独承诺**：
 认不出的版本号一律作废重下，这是设计而不是缺陷（见 `src/io/anabranch/ResumeState.java`）。
 破坏 `.meta` 兼容时至少升 minor 并在提交信息里写明。
+
+## 四、CI 发版口（`.github/workflows/build-core.yml`）
+
+与 §一 完全等价的另一条路，签名与上传都在 runner 上做，本机连 Gradle 都不用装。
+只能手动触发（Actions → 「构建 / 发版 anabranch-core」→ Run workflow）：
+
+| 输入 | 含义 |
+|---|---|
+| `release` | 勾 = 正式发版：导入 GPG 私钥 → `centralBundle` → 上传 Portal 并轮询校验 → 打 `v<版本>` tag。不勾 = 只出未签名 artifact |
+| `auto_publish` | 勾 = Portal 校验通过后自动 Publish；**不勾（默认）= 停在 Portal 等你点 Publish，那之前还能 Drop 撤回** |
+| `aria2_run_id` | 可选：某次「构建 libaria2」的 run id，把它的 AAR 一并发布为 anabranch-aria2（§一·五 的 CI 版） |
+| `aria2_artifact` | 与上配套：`libaria2-so`（全量）或 `libaria2-so-slim`（裁剪） |
+
+**一次性准备**——仓库 Settings → Secrets and variables → Actions 里加四个 secret：
+
+| secret | 内容 |
+|---|---|
+| `MAVEN_GPG_PRIVATE_KEY` | `gpg --armor --export-secret-keys <KEYID>` 的完整输出（ASCII 装甲，含 BEGIN/END 行） |
+| `MAVEN_GPG_PASSPHRASE` | 该私钥的口令（无口令则留空字符串） |
+| `CENTRAL_USERNAME` | Portal 右上角头像 → View Account → Generate User Token 给出的 username |
+| `CENTRAL_PASSWORD` | 同一处给出的 password（是令牌，不是登录密码） |
+
+workflow 的前置核对会拒绝：缺 secret、版本号带 `-SNAPSHOT`、`v<版本>` tag 已存在
+（同一版本发过了，改版本号再来）。发版成功后 artifact 里附一份签名过的
+bundle zip 备查。
+
+安全边界：私钥只在 runner 内存里活一次 job，GitHub 对 secret 做日志遮蔽；
+Portal 令牌可随时在 Portal 撤销重发。真要收回发版口，删掉那四个 secret 即可
+——workflow 会在第一步就停下。
+

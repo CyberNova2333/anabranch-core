@@ -1,25 +1,47 @@
-name: 构建 anabranch-core
+name: 构建 / 发版 anabranch-core
 
-# 出 anabranch-core 的发布构件（jar / sources / javadoc / POM / Gradle module）
-# 塞进 workflow artifact。**未签名**：GPG 签名与 Central 上传只在维护者本机做
-# （docs/RELEASING.md），CI 里没有私钥、也不该有——这条 workflow 是「不用本地装
-# Gradle 也能拿到构件」的取用口，不是发版口，与「不做自动发版」不冲突。
+# 本仓库唯一的发版口。只能手动触发（workflow_dispatch）：
 #
-# 触发：推 main（顺手出一份，短保留）、打 v* tag（发布锚点，长保留）、手动。
+#   - 不勾 release：gradle build + publishToMavenLocal，把 jar / sources / javadoc /
+#     POM 的完整 Maven 布局（未签名）塞进 artifact——不装 Gradle 也能取构件。
+#   - 勾 release：导入 GPG 私钥 → gradle centralBundle（签名 + 校验和 + zip）→
+#     上传 Central Portal 并轮询校验结果 → 打 v<版本> tag。默认 USER_MANAGED：
+#     Portal 校验通过后停在那里等维护者点 Publish（那一步之后就撤不回）；再勾
+#     auto_publish 才让 Portal 校验通过后自动发布。
+#   - aria2_run_id：填一个「构建 libaria2」run 的 id，就把该 run 的 AAR 一并
+#     打进 bundle 发布（anabranch-aria2，见 docs/RELEASING.md §一·五）。
+#
+# 「不做自动发版」的边界在这里的含义：没有任何 push/tag 事件能触发发布，发布只
+# 来自一个人的一次有意识的勾选。需要的 secrets 见 docs/RELEASING.md §四。
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release:
+        description: '正式发版：签名 → 上传 Central Portal → 打 tag（不勾 = 只出未签名 artifact）'
+        type: boolean
+        default: false
+      auto_publish:
+        description: 'Portal 校验通过后自动 Publish（不勾 = 停在 Portal 等人工点，可撤回）'
+        type: boolean
+        default: false
+      aria2_run_id:
+        description: '可选：「构建 libaria2」的 run id，把它的 AAR 一并发布为 anabranch-aria2'
+        type: string
+        default: ''
+      aria2_artifact:
+        description: 'aria2_run_id 对应的 artifact 名（全量 libaria2-so / 裁剪 libaria2-so-slim）'
+        type: string
+        default: 'libaria2-so'
 
 permissions:
-  contents: read
+  contents: write   # 只有 release 打 tag 那一步用到；其余步骤只读
+  actions: read     # 跨 run 下载 aria2 artifact
 
 jobs:
   build:
-    name: Gradle 构建 + Maven 布局
+    name: ${{ inputs.release && '发版' || '构建' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
@@ -29,7 +51,7 @@ jobs:
           java-version: '17'
 
       # 仓库刻意不放 wrapper（CONTRIBUTING「构建系统只管发布」），Gradle 版本在
-      # 这里钉死——与发布配置验证时用的是同一版。
+      # 这里钉死——与发布配置本地验证时用的是同一版。
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.3'
@@ -41,33 +63,143 @@ jobs:
           echo "VERSION=$v" >> "$GITHUB_ENV"
           echo "version=$v"
 
+      - name: 发版前置核对
+        if: ${{ inputs.release }}
+        env:
+          GPG_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${GPG_KEY:?缺 secret MAVEN_GPG_PRIVATE_KEY（ASCII 装甲的私钥）}"
+          : "${CENTRAL_USERNAME:?缺 secret CENTRAL_USERNAME（Portal 用户令牌的 username）}"
+          : "${CENTRAL_PASSWORD:?缺 secret CENTRAL_PASSWORD（Portal 用户令牌的 password）}"
+          case "$VERSION" in
+            *-SNAPSHOT) echo "::error::版本号 $VERSION 带 -SNAPSHOT，Central 不收；先定版本再发"; exit 1 ;;
+          esac
+          if git ls-remote --tags origin "refs/tags/v${VERSION}" | grep -q .; then
+            echo "::error::tag v${VERSION} 已存在——这个版本发过了，改版本号再来"; exit 1
+          fi
+
+      # ── 可选：把某次 libaria2 构建的 AAR 拉进来一起发 ──────────────────
+      - name: 下载 aria2 AAR
+        if: ${{ inputs.aria2_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.aria2_artifact }}
+          run-id: ${{ inputs.aria2_run_id }}
+          github-token: ${{ github.token }}
+          path: aria2-artifact
+
+      - name: 放置 aria2 AAR
+        if: ${{ inputs.aria2_run_id != '' }}
+        run: |
+          set -euo pipefail
+          aar="$(find aria2-artifact -name "anabranch-aria2-${VERSION}.aar" | head -1)"
+          [ -n "$aar" ] || { echo "::error::artifact 里没有 anabranch-aria2-${VERSION}.aar（版本对不上？）"; exit 1; }
+          mkdir -p aria2/dist && cp "$aar" aria2/dist/
+          echo "AAR：$(sha256sum aria2/dist/*.aar)"
+
       # gradle build = 编译（--release 8）+ javadoc/sources jar + 三套 core 测试
-      # 作为 check（与 run-checks.sh 同一批用例，少 core 边界检查那一步——那一步
-      # 在 checks.yml 里）。
+      # 作为 check（与 run-checks.sh 同一批用例，core 边界检查在 checks.yml）。
       - name: gradle build
         run: gradle build
 
-      # 完整 Maven 布局落到本地仓库再收集：拿到的目录可以直接塞进 ~/.m2 或当
-      # flatDir/mavenLocal 用，不必等 Central。
+      # ── 不发版：未签名的 Maven 布局 ───────────────────────────────────
       - name: publishToMavenLocal（未签名）
+        if: ${{ !inputs.release }}
         run: gradle publishToMavenLocal
 
-      - name: 收集产物
+      - name: 收集未签名产物
+        if: ${{ !inputs.release }}
         run: |
           set -euo pipefail
           out=dist/anabranch-core-${VERSION}
-          mkdir -p "$out"
-          # 只收本仓库这个 group 的子树，且保留 io/github/... 的仓库根布局
           mkdir -p "$out/maven-repo/io/github"
           cp -r ~/.m2/repository/io/github/cybernova2333 "$out/maven-repo/io/github/"
           cp build/libs/anabranch-core-*.jar "$out/"
           ( cd "$out" && find . -type f ! -name SHA256SUMS.txt -exec sha256sum {} + | sort -k2 | tee SHA256SUMS.txt )
 
+      # ── 发版：签名出包 → Portal → tag ────────────────────────────────
+      - name: 导入 GPG 私钥
+        if: ${{ inputs.release }}
+        env:
+          GPG_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GPG_KEY" | gpg --batch --import
+          fpr="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')"
+          [ -n "$fpr" ] || { echo "::error::导入后找不到私钥指纹"; exit 1; }
+          echo "GPG_FPR=$fpr" >> "$GITHUB_ENV"
+          echo "签名 key：$fpr"
+
+      - name: gradle centralBundle（签名 + 校验和 + zip）
+        if: ${{ inputs.release }}
+        env:
+          GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          gradle centralBundle \
+            -Psigning.gnupg.executable=gpg \
+            -Psigning.gnupg.keyName="$GPG_FPR" \
+            -Psigning.gnupg.passphrase="$GPG_PASSPHRASE"
+          mkdir -p dist
+          cp build/central-bundle.zip "dist/anabranch-${VERSION}-central-bundle.zip"
+          ( cd dist && sha256sum *.zip | tee SHA256SUMS.txt )
+          unzip -l build/central-bundle.zip | grep -E '\.(pom|jar|aar|module)$' || true
+
+      - name: 上传 Central Portal 并等校验
+        if: ${{ inputs.release }}
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          AUTO_PUBLISH: ${{ inputs.auto_publish }}
+        run: |
+          set -euo pipefail
+          token="$(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)"
+          echo "::add-mask::$token"
+          ptype=USER_MANAGED; [ "$AUTO_PUBLISH" = "true" ] && ptype=AUTOMATIC
+          name="anabranch-${VERSION}"
+          id="$(curl -fsS --retry 3 -X POST \
+              -H "Authorization: Bearer $token" \
+              -F "bundle=@build/central-bundle.zip" \
+              "https://central.sonatype.com/api/v1/publisher/upload?name=${name}&publishingType=${ptype}")"
+          echo "deployment id: $id（publishingType=$ptype）"
+          echo "DEPLOYMENT_ID=$id" >> "$GITHUB_ENV"
+
+          # 轮询：USER_MANAGED 等到 VALIDATED 即可（之后由人在 Portal 点 Publish）；
+          # AUTOMATIC 等 PUBLISHED。FAILED 立刻红并把 Portal 的错误原样打出来。
+          want=VALIDATED; [ "$ptype" = AUTOMATIC ] && want=PUBLISHED
+          for i in $(seq 1 80); do
+            sleep 15
+            resp="$(curl -fsS --retry 3 -X POST -H "Authorization: Bearer $token" \
+                    "https://central.sonatype.com/api/v1/publisher/status?id=${id}")"
+            state="$(printf '%s' "$resp" | jq -r '.deploymentState')"
+            echo "[$i] $state"
+            case "$state" in
+              FAILED)
+                echo "::error::Portal 校验失败"; printf '%s\n' "$resp" | jq .; exit 1 ;;
+              "$want"|PUBLISHED)
+                printf '%s\n' "$resp" | jq '{deploymentState, purls}'
+                echo "::notice::部署 $id 已到 $state。$( [ "$ptype" = USER_MANAGED ] && echo '到 central.sonatype.com → Deployments 点 Publish 才真正发布（也可在那里 Drop 撤回）。' )"
+                exit 0 ;;
+            esac
+          done
+          echo "::warning::等了 20 分钟仍是 $state；去 Portal 的 Deployments 页看进度（部署本身已提交，不会丢）"
+
+      - name: 打 tag v${{ env.VERSION }}
+        if: ${{ inputs.release }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VERSION}" -m "anabranch-core ${VERSION}（Central 部署 ${DEPLOYMENT_ID}）"
+          git push origin "v${VERSION}"
+
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: anabranch-core-${{ env.VERSION }}${{ startsWith(github.ref, 'refs/tags/') && '' || '-snapshot' }}
+          name: anabranch-core-${{ env.VERSION }}${{ inputs.release && '' || '-unsigned' }}
           path: dist/
           if-no-files-found: error
-          # 推 main 顺手出的那份留两周够用；tag 那份是发布锚点，留满 90 天。
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 90 || 14 }}
+          retention-days: ${{ inputs.release && 90 || 14 }}
