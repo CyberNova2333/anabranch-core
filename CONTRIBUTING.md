@@ -86,13 +86,13 @@ Co-authored-by: Claude <noreply@anthropic.com>
 CI 跑的就是你本地那条命令，没有第二套配置——所以本地绿了 CI 基本不会红，
 反过来也一样。
 
-另有两条**构建**workflow，产物只上传 artifact、不入库不发版：
+另有两条**只能手动触发**的 workflow：
 
-- `build-core.yml`：推 main / 打 `v*` tag / 手动触发，`gradle build` +
-  `publishToMavenLocal`，把 jar / sources / javadoc / POM 的完整 Maven 布局
-  （**未签名**——签名与 Central 上传只在维护者本机做）塞进 artifact，不装
-  Gradle 也能取构件。
-- `build-aria2.yml`：手动触发，交叉编译 libaria2 并组装 AAR，见 docs/ARIA2.md §六。
+- `build-core.yml`：构建 / 发版口。默认只把 jar / sources / javadoc / POM 的
+  Maven 布局（未签名）塞进 artifact；勾 `release` 才签名、上传 Central、打 tag
+  ——发布只来自一个人的一次勾选，没有任何 push/tag 事件能触发它。
+  见 docs/RELEASING.md §四。
+- `build-aria2.yml`：交叉编译 libaria2 并组装 AAR，见 docs/ARIA2.md §六。
 
 ## 构建系统只管发布
 
