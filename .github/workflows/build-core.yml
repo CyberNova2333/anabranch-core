@@ -237,7 +237,7 @@ jobs:
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: anabranch-core-${{ env.VERSION }}${{ inputs.release && '' || '-unsigned' }}
+          name: anabranch-core-${{ env.VERSION }}${{ !inputs.release && '-unsigned' || '' }}
           path: dist/
           if-no-files-found: error
           retention-days: ${{ inputs.release && 90 || 14 }}
