@@ -17,7 +17,7 @@ group 与 Java 包名（`io.anabranch`）没有绑定关系——
 `io.anabranch` 做 group：那要证明对 anabranch.io 域名的控制权，而这个库不打算
 背一个域名。
 
-### 2. GPG 签名 key
+### 2. GPG 签名 key（走 CI 发版口的话跳过本节，见 §四）
 
 Central 要求所有产物带 `.asc` 签名。构建脚本用的是 `useGpgCmd()`——直接调本机
 `gpg`，不用把私钥交给 Gradle：
@@ -99,14 +99,30 @@ AAR 内，分发页面还需注明许可与源码获取方式）。**真机验�
 | `aria2_run_id` | 可选：某次「构建 libaria2」的 run id，把它的 AAR 一并发布为 anabranch-aria2（§一·五 的 CI 版） |
 | `aria2_artifact` | 与上配套：`libaria2-so`（全量）或 `libaria2-so-slim`（裁剪） |
 
-**一次性准备**——仓库 Settings → Secrets and variables → Actions 里加四个 secret：
+**一次性准备**——仓库需要四个 secret，前两个由 CI 生成，后两个手动填：
 
-| secret | 内容 |
+| secret | 来源 |
 |---|---|
-| `MAVEN_GPG_PRIVATE_KEY` | `gpg --armor --export-secret-keys <KEYID>` 的完整输出（ASCII 装甲，含 BEGIN/END 行） |
-| `MAVEN_GPG_PASSPHRASE` | 该私钥的口令（无口令则留空字符串） |
+| `MAVEN_GPG_PRIVATE_KEY` | 跑一次 `setup-signing-key.yml`（下文）自动写入 |
+| `MAVEN_GPG_PASSPHRASE` | 同上 |
 | `CENTRAL_USERNAME` | Portal 右上角头像 → View Account → Generate User Token 给出的 username |
 | `CENTRAL_PASSWORD` | 同一处给出的 password（是令牌，不是登录密码） |
+
+**GPG key 由 CI 生成**（`.github/workflows/setup-signing-key.yml`，手动触发一次）：
+本机不需要装 gpg、不需要有任何 key——runner 上生成 RSA 4096 + 随机口令、公钥传
+keyserver.ubuntu.com、私钥与口令直接写进仓库 secret、指纹写进 variable
+`MAVEN_GPG_FINGERPRINT`，私钥全程不经过任何人的电脑。它唯一的前提是一个能写
+secret 的令牌（Actions 自带的 `` 没这个权限）：
+
+1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate：
+   Repository access 只选本仓库；Permissions 只给 **Secrets: Read and write** 与
+   **Variables: Read and write**；有效期选最短的。
+2. 存成本仓库 secret `SECRETS_WRITER_PAT`。
+3. Actions → 「生成 Maven 签名 key」→ Run workflow（默认 UID 即可）。
+4. 跑完看 job summary 里的指纹；然后**删掉 `SECRETS_WRITER_PAT`**，它的使命结束了。
+
+换 key 时再跑一次并勾 `overwrite`：新公钥传 keyserver，旧 key 留在那里无害
+（已发布版本的签名仍可验证）。私钥不设过期，理由写在 workflow 头注。
 
 workflow 的前置核对会拒绝：缺 secret、版本号带 `-SNAPSHOT`、`v<版本>` tag 已存在
 （同一版本发过了，改版本号再来）。发版成功后 artifact 里附一份签名过的
