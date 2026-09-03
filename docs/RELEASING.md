@@ -96,8 +96,8 @@ AAR 内，分发页面还需注明许可与源码获取方式）。**真机验�
 |---|---|
 | `release` | 勾 = 正式发版：导入 GPG 私钥 → `centralBundle` → 上传 Portal 并轮询校验 → 打 `v<版本>` tag。不勾 = 只出未签名 artifact |
 | `auto_publish` | 勾 = Portal 校验通过后自动 Publish；**不勾（默认）= 停在 Portal 等你点 Publish，那之前还能 Drop 撤回** |
-| `aria2_run_id` | 可选：某次「构建 libaria2」的 run id，把它的 AAR 一并发布为 anabranch-aria2（§一·五 的 CI 版） |
-| `aria2_artifact` | 与上配套：`libaria2-so`（全量）或 `libaria2-so-slim`（裁剪） |
+| `include_aria2` | 勾 = 本次 run 先交叉编译 libaria2 并组装 AAR（约 12 分钟），再一并发布为 anabranch-aria2（§一·五 的 CI 版）。不用翻 run id |
+| `aria2_slim` | 与上配套：勾 = 裁剪构建（去 libxml2/SQLite/libssh2）；不勾 = 全量已验证配方 |
 
 **一次性准备**——仓库需要四个 secret，前两个由 CI 生成，后两个手动填：
 

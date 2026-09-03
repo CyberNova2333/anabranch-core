@@ -14,6 +14,13 @@ on:
         description: '裁剪构建：去 libxml2/SQLite/libssh2（gnutls 后端随之不含 OpenSSL）。功能面已被宿主真下载测试验证；默认全量=已验证配方'
         type: boolean
         default: false
+  # 发版口（build-core.yml 勾 include_aria2）在同一次 run 里调用本 workflow
+  # 现编 AAR，再从本 run 取 artifact——不用翻 run id、不跨 run。
+  workflow_call:
+    inputs:
+      slim:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
