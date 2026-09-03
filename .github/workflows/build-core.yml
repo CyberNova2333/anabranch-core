@@ -8,8 +8,8 @@ name: 构建 / 发版 anabranch-core
 #     上传 Central Portal 并轮询校验结果 → 打 v<版本> tag。默认 USER_MANAGED：
 #     Portal 校验通过后停在那里等维护者点 Publish（那一步之后就撤不回）；再勾
 #     auto_publish 才让 Portal 校验通过后自动发布。
-#   - aria2_run_id：填一个「构建 libaria2」run 的 id，就把该 run 的 AAR 一并
-#     打进 bundle 发布（anabranch-aria2，见 docs/RELEASING.md §一·五）。
+#   - include_aria2：先在同一次 run 里跑一遍「构建 libaria2」（约 12 分钟）现编
+#     AAR，再把它一并打进 bundle 发布为 anabranch-aria2；aria2_slim 选裁剪版。
 #
 # 「不做自动发版」的边界在这里的含义：没有任何 push/tag 事件能触发发布，发布只
 # 来自一个人的一次有意识的勾选。需要的 secrets 见 docs/RELEASING.md §四。
@@ -24,22 +24,31 @@ on:
         description: 'Portal 校验通过后自动 Publish（不勾 = 停在 Portal 等人工点，可撤回）'
         type: boolean
         default: false
-      aria2_run_id:
-        description: '可选：「构建 libaria2」的 run id，把它的 AAR 一并发布为 anabranch-aria2'
-        type: string
-        default: ''
-      aria2_artifact:
-        description: 'aria2_run_id 对应的 artifact 名（全量 libaria2-so / 裁剪 libaria2-so-slim）'
-        type: string
-        default: 'libaria2-so'
+      include_aria2:
+        description: '连 anabranch-aria2 一起：本次 run 先交叉编译 libaria2 并组装 AAR（约 12 分钟）'
+        type: boolean
+        default: false
+      aria2_slim:
+        description: 'aria2 用裁剪构建（去 libxml2/SQLite/libssh2；不勾 = 全量已验证配方）'
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # 只有 release 打 tag 那一步用到；其余步骤只读
-  actions: read     # 跨 run 下载 aria2 artifact
 
 jobs:
+  # 勾了 include_aria2 才跑：复用「构建 libaria2」整个 workflow，产物留在本 run。
+  aria2:
+    if: ${{ inputs.include_aria2 }}
+    uses: ./.github/workflows/build-aria2.yml
+    with:
+      slim: ${{ inputs.aria2_slim }}
+
   build:
     name: ${{ inputs.release && '发版' || '构建' }}
+    needs: [aria2]
+    # aria2 job 被跳过（没勾）时也要跑；它失败或被取消时不跑。
+    if: ${{ !cancelled() && needs.aria2.result != 'failure' && needs.aria2.result != 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -81,18 +90,16 @@ jobs:
             echo "::error::tag v${VERSION} 已存在——这个版本发过了，改版本号再来"; exit 1
           fi
 
-      # ── 可选：把某次 libaria2 构建的 AAR 拉进来一起发 ──────────────────
-      - name: 下载 aria2 AAR
-        if: ${{ inputs.aria2_run_id != '' }}
+      # ── 可选：取本 run 里刚编好的 AAR 一起发 ────────────────────────────
+      - name: 取本 run 的 aria2 AAR
+        if: ${{ inputs.include_aria2 }}
         uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.aria2_artifact }}
-          run-id: ${{ inputs.aria2_run_id }}
-          github-token: ${{ github.token }}
+          name: libaria2-so${{ inputs.aria2_slim && '-slim' || '' }}
           path: aria2-artifact
 
       - name: 放置 aria2 AAR
-        if: ${{ inputs.aria2_run_id != '' }}
+        if: ${{ inputs.include_aria2 }}
         run: |
           set -euo pipefail
           aar="$(find aria2-artifact -name "anabranch-aria2-${VERSION}.aar" | head -1)"
