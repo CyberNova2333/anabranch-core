@@ -21,7 +21,7 @@ ZERO = "0" * 40
 
 
 def run(args):
-    p = subprocess.run(args, capture_output=True, text=True)
+    p = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace")
     return p.stdout if p.returncode == 0 else ""
 
 
