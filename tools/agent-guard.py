@@ -34,6 +34,12 @@ import shlex
 import subprocess
 import sys
 
+# 中文 Windows 下 Python 默认按 GBK 读写标准流，而 Claude Code 收发的都是 UTF-8：
+# 不统一的话，命令里一有中文就解析失败、落进下面的放行分支。
+for _s in (sys.stdin, sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        _s.reconfigure(encoding="utf-8", errors="replace")
+
 ESCAPES = "文档里写明的逃生口：提交信息顶格独占一行 [skip-hooks]，或 SKIP_MSG_HOOK=1 git push"
 
 
@@ -43,7 +49,7 @@ def repo_root():
         return d
     try:
         out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
         return out.stdout.strip() if out.returncode == 0 else ""
     except OSError:
         return ""
@@ -55,7 +61,7 @@ def wire_hooks(root):
         return
     try:
         cur = subprocess.run(["git", "-C", root, "config", "--get", "core.hooksPath"],
-                             capture_output=True, text=True).stdout.strip()
+                             capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.strip()
         if cur != "tools/githooks":
             subprocess.run(["git", "-C", root, "config", "core.hooksPath",
                             "tools/githooks"], capture_output=True)
@@ -102,7 +108,7 @@ def main():
         wire_hooks(root)
 
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
     except Exception:
         return 0
     cmd = (payload.get("tool_input") or {}).get("command") or ""
