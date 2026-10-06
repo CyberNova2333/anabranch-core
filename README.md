@@ -10,29 +10,50 @@
 
 **阅读导航**
 
-[🏛️ 架构与职责](#section-1) · [🚀 快速开始](#section-2) · [⚙️ 使用边界](#section-3) · [🧪 验证与协作](#section-4) · [📜 许可](#section-5) · [⚙️ 集成与产物](#section-6)
+[🏛️ 分层代码架构](#section-1) · [🚀 快速开始](#section-2) · [⚙️ 使用边界](#section-3) · [🧪 验证与协作](#section-4) · [📜 许可](#section-5) · [⚙️ 集成与产物](#section-6)
 
 ---
 
 <a id="section-1"></a>
 
-## 🏛️ 架构与职责
+## 🏛️ 分层代码架构
+
+核心库通过 `Engine` 隔离网络取字节能力，`Downloader` 负责调度和文件提交。`aria2/` 是共享请求类型的独立后端，当前并不实现 `Engine`，也没有打进 core JAR；核心不反向依赖它或 Android。
+
+图中展示主要代码依赖：实线箭头指向被调用或被依赖的模块，虚线表示实现或生成关系；数据读写另用连线文字标明。
 
 ```mermaid
-flowchart LR
-    Request[下载请求与源集合] --> Downloader[Downloader 分块与提交]
-    Downloader --> Policy[Policy / Stats 选路]
-    Downloader --> Engine[Engine 获取字节区间]
-    Downloader --> Integrity[摘要校验与续传状态]
-    Engine --> HTTP[HttpEngine]
+flowchart TB
+    subgraph L0["公开契约"]
+        API["Request / Result / Listener / Cancellation"]
+        DOWN["Downloader"]
+    end
+    subgraph L1["策略与一致性"]
+        POLICY["Policy / Stats / SourceSet"]
+        STATE["Integrity / ResumeState / RateLimiter"]
+    end
+    subgraph L2["传输边界与实现"]
+        ENGINE["Engine"]
+        HTTP["HttpEngine"]
+        ARIA["Aria2Downloader / Aria2Native"]
+    end
+    DOWN --> API
+    DOWN --> POLICY
+    DOWN --> STATE
+    DOWN --> ENGINE
+    HTTP -. 实现 .-> ENGINE
+    ARIA --> API
 ```
 
-| 模块 | 职责 |
-|---|---|
-| `src/io/anabranch/` | 下载调度、线路策略、摘要、续传、限速与测速 |
-| `aria2/` | 独立的 native 下载后端；不打进 core JAR |
-| `test/` | 单源、多源、限速及后端故障测试 |
-| `tools/` | 编译、边界检查与发布辅助 |
+| 层次 | 源码入口 | 职责与边界 |
+|---|---|---|
+| 公开契约 | [Request / Result / Listener / Cancellation](src/io/anabranch/Request.java) | 描述任务、结果、进度与取消。 |
+| 公开契约 | [Downloader](src/io/anabranch/Downloader.java) | 组织探测、分块并发、重试、续传与最终提交。 |
+| 策略与一致性 | [Policy / Stats / SourceSet](src/io/anabranch/Policy.java) | 维护源状态和选路依据。 |
+| 策略与一致性 | [Integrity / ResumeState / RateLimiter](src/io/anabranch/Integrity.java) | 摘要与块校验、续传记录、限速。 |
+| 传输边界与实现 | [Engine](src/io/anabranch/Engine.java) | 定义探测与指定字节区间写入接口。 |
+| 传输边界与实现 | [HttpEngine](src/io/anabranch/HttpEngine.java) | 默认 HTTP 传输实现。 |
+| 传输边界与实现 | [Aria2Downloader / Aria2Native](aria2/src/io/anabranch/aria2/Aria2Downloader.java) | 独立下载实现，通过 JNI 调用 native 后端。 |
 
 <a id="-快速开始"></a>
 
