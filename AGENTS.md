@@ -79,6 +79,7 @@ scope 可选，`!`（破坏性变更）可选。
 | Agent | trailer |
 |---|---|
 | Claude | `Claude <noreply@anthropic.com>` |
+| Codex | `Codex <noreply@openai.com>` |
 
 **不要**让 `github-actions[bot]` 当作者——那说明你在用 CI 代提交。
 
