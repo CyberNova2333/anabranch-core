@@ -8,3 +8,5 @@ __pycache__/
 *.pyc
 aria2/out-host/
 aria2/dist/
+
+# Local documentation build output

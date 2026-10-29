@@ -15,14 +15,13 @@ which is why the full test suite runs on a desktop JVM.
 
 ## Why another download library
 
-| capability | system DownloadManager | typical chunked downloaders | anabranch |
-|---|---|---|---|
-| multi-threaded chunking | ❌ | ✅ | ✅ |
-| **multiple sources for one file, in parallel** | ❌ | ❌ | ✅ |
-| **per-chunk failover between sources** | ❌ | ❌ | ✅ |
-| **source racing with measured throughput** | ❌ | ❌ | ✅ |
-| per-chunk verification | ❌ | ❌ | ✅ |
-| swappable engine (native backends possible) | ❌ | ❌ | ✅ |
+| Implemented core capability | Current boundary |
+| --- | --- |
+| Concurrent chunks from multiple sources | Caller supplies a source set; availability does not prove identical content |
+| Per-chunk failover | Retry policy and failure budget govern the next attempt |
+| Throughput-based source selection | Policy reads measured statistics |
+| Optional chunk/whole-file verification | Caller supplies trusted digests |
+| Pluggable Engine | The independent aria2 downloader currently uses a separate entry point |
 
 The differentiator is one word: **multi-source**. Multi-threaded chunking is a
 mature category; this library exists for "one file, N routes, per-chunk
@@ -113,11 +112,32 @@ Development needs no build system:
 sh tools/run-checks.sh    # compile + core boundary checks + 77 tests, ~1 minute
 ```
 
-Gradle exists solely for packaging and publishing (see
-[docs/RELEASING.md](docs/RELEASING.md)).
+Gradle supports packaging and publishing (see
+[docs/RELEASING.md](docs/RELEASING.md)) and wires the three core suites into `check`.
+The direct script additionally runs the independent aria2 file-IO failover suite.
 
 ## License
 
-Apache-2.0. A future `anabranch-aria2` backend must be a **separate artifact**:
+Apache-2.0. The `anabranch-aria2` backend is a **separate artifact**:
 aria2 is GPLv2+, and statically linking it creates source-provision obligations
 that pure-Java users should not inherit.
+
+## Current backend and verification boundary
+
+The independent aria2 downloader shares request types but currently does not implement `Engine` and is not included in the core JAR. Native host tests and Android device acceptance are separate checks. Preparing JDK 17 or 21, Python 3 and a POSIX shell matches the current direct-check workflow; Gradle is needed for packaging, not the first correctness check.
+
+`Request.of` supplies no integrity metadata. Chunk or whole-file digest checks only run when the caller supplies the corresponding trusted digests; transport completion alone does not prove mirror content equality. The final Java commit removes the previous target before `renameTo`, so do not describe replacement as a universal atomic transaction.
+
+The commands and tests were inspected during this documentation sync; no application or native tests were run.
+
+## Documentation site
+
+The [Chinese source guide](repo-docs/README.md) follows one implemented workflow, then links to a code map and evidence audit. It does not claim complete architecture coverage.
+
+```sh
+npm --prefix docs-site ci
+npm --prefix docs-site run docs:dev -- --host 127.0.0.1
+npm --prefix docs-site run docs:build
+```
+
+The documentation site uses the default VitePress theme, with dependencies installed separately from the application. Output defaults to `docs-site/.vitepress/dist/`; append `-- --outDir <external-absolute-directory>` for an isolated build. Markdown remains in `repo-docs/` and is included by the site. Repository source links are shown as exact paths; source files and local resources are not published.

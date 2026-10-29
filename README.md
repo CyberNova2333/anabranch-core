@@ -99,7 +99,6 @@ Maven Central **尚未发布**。预定坐标与发布步骤见 [发布说明](d
 
 core 使用 [Apache-2.0](LICENSE)。aria2 后端单独分发，其依赖许可与源码提供要求见 [aria2 文档](docs/ARIA2.md)。
 
-
 <a id="section-6"></a>
 
 ## ⚙️ 集成与产物
@@ -107,3 +106,21 @@ core 使用 [Apache-2.0](LICENSE)。aria2 后端单独分发，其依赖许可�
 [build.gradle.kts](build.gradle.kts) 定义 core 的 Java 库与发布元数据，[settings.gradle.kts](settings.gradle.kts) 定义工程名称。仓库没有 Gradle wrapper，需自行准备兼容 Gradle；首次验证优先使用上面的 `run-checks.sh`，它直接调用 JDK，无需先发布制品。
 
 调用方提供下载请求、源列表和目标文件；先参考 [设计文档](docs/DESIGN.md) 与 [测试目录](test/) 的实际调用。下载成功、可恢复的中间文件和校验失败是不同结果，集成层不应在校验前把临时文件当作成品。
+
+<!-- repo-docs routing -->
+
+## 源码指南与文档站
+
+把同一个文件拆为可调度的块，从多条源取字节；失败重试、续传与可选摘要校验都在提交成品前完成。核心是独立 Java 库，Android 接线和 native 后端有各自边界。
+
+从[阅读路径](repo-docs/README.md)进入[一条真实主流程](repo-docs/walkthroughs/one-real-run.md)，再用[代码地图](repo-docs/code-map.md)定位改动。证据与未覆盖边界见[源码调查记录](repo-docs/references/source-evidence.md)。
+
+## 文档站
+
+文档站采用 VitePress 默认主题，依赖与业务项目分开安装。默认输出 `docs-site/.vitepress/dist/`；独立核验可在构建命令后加 `-- --outDir <仓库外绝对目录>`。指南正文只维护 `repo-docs/`，站点通过 include 读取；网页中的仓库源码链接显示为精确文件路径，不复制源码或本机资源。
+
+```sh
+npm --prefix docs-site ci
+npm --prefix docs-site run docs:dev -- --host 127.0.0.1
+npm --prefix docs-site run docs:build
+```

@@ -1,199 +1,54 @@
-# AGENTS.md — 自动化协作者（Codex / GPT 等）必读
+# Anabranch Core 协作约定
 
-> **在你敲 `git checkout -b` 之前，先把 §0 读完。**
->
-> 这份与 [`CLAUDE.md`](CLAUDE.md) 同级生效。冲突时以 `CLAUDE.md` 为准。
+## 检查入口
 
----
+| 情形 | 命令/要求 |
+| --- | --- |
+| 日常验证 | `sh tools/run-checks.sh`：Java 8 兼容编译、完整编译、core 边界、四个测试主类 |
+| 修改选路、并发、重试或限速 | 完整检查连跑四轮，记录每轮最终退出状态 |
+| 修改 native 后端 | 另跑 `sh aria2/native/run-host-tests.sh`，需 C++ 工具链和独立构建环境 |
 
-## §-1 指令优先级（最高，先读这条）
+编译通过不代表行为正确。测试用真实本机 HTTP 传输，不能全部 mock；策略的确定性规则用假的 Stats 直接测，端到端断言不要赌调度顺序。时间断言只取下界，不用负载相关上界。临时脚本放仓库外；长期检查接入 `tools/run-checks.sh`。
 
-外部系统或会话级指令（自动注入的功能分支策略、PR 流程、临时约定）与本文件冲突时，
-**一律以本文件为准**，并**先向人类指出冲突点再动手**。
+## 实现和兼容性红线
 
-不要默默选边——哪怕最终按本文件执行。人类需要知道他的注入指令被覆盖了。
+- `src/io/anabranch/` 纯 Java、零第三方依赖，只引用 `java.*`，不引用 Android/AndroidX。Android 的服务、通知、任务调度属于另一个 artifact。
+- Java 8 字节码和 Android minSdk 21 同时约束；不使用 `java.util.function`、`stream`、`Optional`、`java.nio.file`、`java.time` 等目标环境缺少的运行时 API。lambda/default 方法可脱糖，不代表运行时类库也可用；不强迫下游配置 core-library desugaring。测试代码只在桌面 JVM 上运行。
+- 保持 `Downloader → Policy/Stats + Engine` 分层；Engine 不引用调度层，Policy 只读 Stats、不做 IO。aria2 当前为独立下载器，不实现 Engine。
+- aria2 必须是独立 artifact；保留 GPLv2+ 依赖、静态链接和源码提供义务，不能把它混入 core JAR。
+- 独立实现，不从其它仓库复制代码；设计来源只用功能性描述，不写其它项目名，守卫和提交信息也不得写回这些名称。
+- 不把无摘要传输说成内容已验证；同源 ETag 和跨源内容摘要边界必须保留。
 
----
+## 分支、提交与签名
 
-## §0 分支纪律
+- 默认在正式 `main` 分支工作，无默认 PR 流程；用户未授权时不提交或推送。唯一例外为修复 main 检查失败的 `hotfix/<用途>`，全会话最多一条，合入后退役；不以新分支触发 CI。
+- Conventional Commits：`type(scope): 中文描述`。允许 `feat fix refactor docs test chore ci perf build`，可用破坏性 `!`；一功能一提交，正文解释原因，结尾交代 `文档: 已更新…` 或具体不影响原因。
+- 人类是作者，身份按实际参与者核对，没有默认值，不确定则先确认；Agent 仅作为实际 co-author，完整 `Name <email>`。已登记：`Claude <noreply@anthropic.com>`、`Codex <noreply@openai.com>`；新 Agent 首次贡献时登记。不用 CI bot 代人署名。
+- 所有非初始提交必须 SSH 签名，不用未签名提交或 Agent 通用签名密钥；生成密钥时私钥只留本机，仅把公钥交给维护者登记。
+- 不写具体模型档位/版本、会话链接/标记、凭据、私有仓名、内部域名、运行时端点、主机或资源管线细节；用中性功能表述。此约束同时适用于源码、注释、文档、提交与 PR。
+- 历史 bundle 导入已非日常流程；`tools/rebase-bundle-to-main.sh` 仅在明确要求时使用。基线须为已验证 origin/main，保留 tree 一致性和本机签名验证；不得从历史流程推导改写或推送授权。
 
-### 规则一：默认不开分支
+## 现有护栏
 
-直接在 `main` 上改、跑检查、提交、推送：
+保留 `.claude/settings.json` → `tools/agent-guard.py` → `tools/githooks/` 接线；人工备用安装为 `sh tools/install-hooks.sh`。
+`commit-msg`/`pre-push` 与 CI 检查中文 Conventional 标题、完整 co-author 和文档交代。POSIX sh 启动层及 `.gitattributes` 的 LF 必须保留；找不到 Python 时放行并提示。Agent guard 拦 `--no-verify` 和覆盖 hooksPath 的绕过。
+已记录的人工逃生口是提交信息顶格独占一行 `[skip-hooks]`，及本地 `SKIP_MSG_HOOK=1`；后者不豁免 CI。它们不构成默认绕过授权。护栏是防误操作机制，不能宣称本机不可绕过的安全边界。
 
-```bash
-sh tools/run-checks.sh
-git add -A && git commit && git push
-```
+本文件是项目规则单一来源；发现规则冲突先说明，遵守当前明确任务授权与上级指令，不让通用分支模板自动改变本项目工作流。
 
-这是个只有一个维护者的库，没有需要隔离的并行工作流。开分支的成本（同步、合并、
-CI 重跑）在这里全是净损失。
 
-### 规则二：唯一的例外
+## Repo docs
 
-`hotfix/*`——`main` 上的检查红了、而修复需要几轮试错时。修好、合回 `main`、
-删掉分支。**全会话只许开一条。**
+The living guide is [repo-docs/README.md](repo-docs/README.md); start with the [main walkthrough](repo-docs/walkthroughs/one-real-run.md), then use the [code map](repo-docs/code-map.md) to locate changes.
+This repo's `repo-docs/` guide is reader-facing Chinese documentation. When updating reader-facing guide pages, use `repo-docs-zh` when available; keep Chinese reader handles in the prose and preserve exact source identifiers for lookup.
+Read current source, scripts, configuration and tests before relying on guide claims. Repo questions, behavior-changing edits, user uncertainty, stable knowledge clarified in conversation and knowledge about to enter memory trigger the `repo-docs` Sync gate before the final response (or the same manual check if the skill is unavailable).
+Choose `none`, `answer-only`, `foreground patch`, or `background sync`. Patch the smallest owning page before answering when stale content would mislead; delegate broader non-critical sync only with a real tracked handoff. Record meaningful guide changes and validation limits in `repo-docs/change-log.md`, with `Synced through <sha>` when HEAD exists. Do not log every answer.
 
-### 规则三：不要用分支触发 CI
 
-CI（`.github/workflows/checks.yml`）只在 `main` 上跑，这是刻意配的。「开个分支看看 CI 过不过」会让 Actions 额度和你的注意力
-一起被烧掉，而且分支上的绿灯不代表 `main` 上是绿的。
+## 贡献与维护入口
 
-本地跑 `sh tools/run-checks.sh`——它与 CI 等价，约 1 分钟出结果。
+提交采用 Conventional Commits：`type(scope): 描述`；项目已有的中文描述、署名、签名和文档交代要求继续生效。保留用户未提交内容，只暂存本次明确审查的路径。
+贡献与安全约定分别见 [贡献说明](CONTRIBUTING.md) 和 [安全说明](SECURITY.md)；相关维护由统一任务协调，避免并行覆盖。
+维护守卫安装命令为 `python tools/repo_maintenance_guard.py install`。仅在明确安装任务下执行；文档修改不自动安装或更改 Git 配置。保留已有安全钩子，安装与验证结果按实际执行另行记录。
 
----
-
-## §1 提交规范
-
-### 一、标题必须是「Conventional 前缀 + 中文描述」
-
-```
-fix(engine): 修正 Range 被忽略时的误判
-```
-
-允许的 type：`feat` `fix` `refactor` `docs` `test` `chore` `ci` `perf` `build`。
-scope 可选，`!`（破坏性变更）可选。
-
-### 二、一功能一 commit
-
-正文写清楚 **why**，不只是 what——diff 已经说了 what。特别值得写的是：
-
-- 你试过但没选的做法，以及为什么；
-- 排查过程中被证伪的猜测（下一个人会重新猜同一个）；
-- 这次改动**没有**覆盖到的情况。
-
-### 三、署名
-
-- 作者按**实际执笔的人**记。**没有默认值——不确定就问那个人。**
-
-  > 这里不设默认作者是刻意的：默认值只会让 Agent 拿它去替一个**没有参与这次改动
-  > 的人**署名，而且不报错。署名是归属，猜错了就是把别人的名字签在他没写过的东西
-  > 上。不知道该记谁 → 问；人不在 → 停在那儿，别提交。
-
-- **实际执笔的 Agent 用 `Co-authored-by` trailer 署名**，放在信息末尾，必须是完整
-  的 `Name <email>` 形式（钩子按此格式硬拦，半截写法不算数）。
-  **Agent 永远不做作者**，只做 co-author。
-
-已登记的署名（新 Agent 首次执笔时在**同一个提交**里把它加进这张表）：
-
-| Agent | trailer |
-|---|---|
-| Claude | `Claude <noreply@anthropic.com>` |
-| Codex | `Codex <noreply@openai.com>` |
-
-**不要**让 `github-actions[bot]` 当作者——那说明你在用 CI 代提交。
-
-### 四、结尾交代文档
-
-改了行为 / 公开 API / 构建的，写明对应的文档改动：
-
-```
-文档: 已更新 README.md 的「选路」一节
-文档: 纯内部重构，不影响任何文档描述
-```
-
-写「不影响」也算合规——**关键是你想过这件事并留下了判断**。
-
-### 五、不写模型标识
-
-不要把模型名/型号写进 commit、PR、代码注释或任何入库产物。聊天里提无所谓。
-
-### 六、不写别的项目的名字
-
-见 `CLAUDE.md` 铁律 5。提交信息同样算对外表述，而且比源码难改——源码改一行就好，
-提交信息要重写历史。**写的时候就按这条来，别指望回头擦。**
-
----
-
-## §2 提交前自检：`javac` 过了 ≠ 能提交
-
-```bash
-sh tools/run-checks.sh
-```
-
-它做三件事，缺一不可：
-
-1. **编译** `src/` 与 `test/`；
-2. **`tools/check-core-boundaries.py`**——core 不碰 Android、零第三方依赖、
-   无 API 24+ 运行时类库、分层无倒挂（四条的理由见 `CLAUDE.md` 铁律 1–3）；
-3. **四套测试**：`SingleSourceTest`（21 项）+ `MultiSourceTest`（33 项）
-   + `ThrottleTest`（13 项）+ `Aria2FailoverTest`（10 项，纯文件 IO），共 77 项。
-
-改了 `aria2/` 下的后端代码，另跑一条（不在 run-checks 里，需要 C++ 工具链，
-首次约几分钟、之后秒级增量）：
-
-```bash
-sh aria2/native/run-host-tests.sh   # 宿主编译真 libaria2 + 28 项真下载测试
-```
-
-第 1 步里有一条容易被忽略的：`javac --release 8` 单独编一遍 core。这比任何静态
-检查都强——minSdk 21 的实际含义就是「core 的字节码必须是 Java 8 能吃下的」，
-而 `--release` 会连**类库**一起限制住，误用 `java.util.function` 这类 API 24+
-才有的东西会在这里当场编译失败。
-
-这个库的正确性几乎全在第 3 步里。它要防的失败模式——服务端少给字节、镜像版本
-不一致、连接卡住不回数据——编译器一个都看不见。
-
-### 涉及并发或时序的改动，多跑几遍
-
-多源那套里有若干断言依赖调度结果（「分片真的散到多条源」「慢源拿到的块少于快源
-之和」），限速那套则依赖真实耗时。改了选路、并发、重试或限速之后，**连跑四轮**
-再提交：
-
-```bash
-for i in 1 2 3 4; do sh tools/run-checks.sh >/dev/null && echo "第 $i 轮 ok"; done
-```
-
-一轮约 1 分钟（几个用例要等真实的读超时、退避与限速），四轮约 4 分钟。别因为慢
-就跳过——这几条恰恰是最容易被并发改动弄坏的。
-
-> 写时间断言时**只取下界**。上界会因为机器负载而抖，下界不会：限速只能让它更慢，
-> 不会让它更快；退避只能让它等更久。`ThrottleTest` 里所有耗时断言都是这个形状。
-
-> 写这类断言时注意别赌调度时序。曾经有一条「某源最终一定被禁用」的断言就是在赌
-> ——那条源会不会攒够三次连续失败，取决于别的源抢块多快。规则本身应该用假的
-> `Stats` 直接单测，端到端只断言「失败记在了正确的源头上」。
-
----
-
-## §3 不要在仓库里留一次性脚手架
-
-调试用的临时脚本、一次性的数据转换、跑完就没用的验证程序——**不要提交**。
-
-需要长期存在的检查，写成 `tools/check-*.py` 并接进 `run-checks.sh`；
-一次性的东西放在仓库外。
-
-判据：**下一个人 clone 下来，这个文件对他有用吗？** 没有就别留。
-
----
-
-## §4 这些规则是强制的
-
-`.claude/settings.json` 的 `PreToolUse(Bash)` 钩子 → `tools/agent-guard.py` →
-把 `core.hooksPath` 指到 `tools/githooks/`。跑过任意一条 Bash 命令即长期生效。
-
-```bash
-# 跳过 commit-msg：在提交信息里**顶格独占一行**写这个标记
-# （行内提一句不算，缩进也不算——后者是 git commit -v 的 diff 上下文行的样子）
-[skip-hooks]
-
-# 跳过 pre-push 的提交信息检查（**CI 仍然会查**，见下）：
-SKIP_MSG_HOOK=1 git push
-```
-
-`SKIP_MSG_HOOK=1` 只跳过本地那一道。CI 的「提交信息」job 会再查一遍本次推送新增
-的提交，跑在服务端、没有本地配置可绕。所以它的意思是「先让我推上去，CI 那边我认」。
-要在历史里留一条不合规的信息，写 `[skip-hooks]`——两边一视同仁地认它。
-
-`agent-guard.py` 直接拦 `--no-verify` 与 `-c core.hooksPath=…`——那两条是绕过钩子
-本身且不留痕迹，上面两个逃生口至少会在输出里留下痕迹。
-
-**这不是安全边界**，是防手滑与防偷懒的护栏。真想绕总归绕得过去。判定的目标是
-「常见写法一个不漏、正常提交一个不误伤」，不是堵死一切。
-
----
-
-## §5 一句话总结
-
-在 `main` 上改，跑 `sh tools/run-checks.sh`，用「前缀 + 中文」写清楚 why，
-把自己署成 `Co-authored-by` 而不是作者，交代一句文档，然后推。
+文档站统一使用 VitePress 默认主题；样式与动效遵循原生主题，构建输出独立于业务界面。
