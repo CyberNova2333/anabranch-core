@@ -216,7 +216,7 @@ jobs:
       - name: 建 GitHub Release
         if: ${{ inputs.release }}
         env:
-          : ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           INCLUDE_ARIA2: ${{ inputs.include_aria2 }}
         run: |
           set -euo pipefail

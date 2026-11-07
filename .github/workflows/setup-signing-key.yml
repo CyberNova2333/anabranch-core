@@ -4,7 +4,7 @@ name: 生成 Maven 签名 key
 # keyserver，私钥与口令直接写进本仓库的 Actions secret——私钥从头到尾不经过任何
 # 人的电脑。之后 build-core.yml 勾 release 就能签名发版。
 #
-# 为什么要一个 PAT：Actions 自带的  没有写 secret 的权限。建一个
+# 为什么要一个 PAT：Actions 自带的 GITHUB_TOKEN 没有写 secret 的权限。建一个
 # 细粒度 PAT（Repository access 只选本仓库；Permissions 只给 Secrets: Read and
 # write、Variables: Read and write），存成 secret SECRETS_WRITER_PAT，跑完本
 # workflow 就可以删掉它。
@@ -35,12 +35,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      : ${{ secrets.SECRETS_WRITER_PAT }}
+      GH_TOKEN: ${{ secrets.SECRETS_WRITER_PAT }}
     steps:
       - name: 前置核对
         run: |
           set -euo pipefail
-          : "${:?缺 secret SECRETS_WRITER_PAT（细粒度 PAT，权限只需 Secrets/Variables 写）}"
+          : "${GH_TOKEN:?缺 secret SECRETS_WRITER_PAT（细粒度 PAT，权限只需 Secrets/Variables 写）}"
           if gh secret list -R "$GITHUB_REPOSITORY" | grep -q '^MAVEN_GPG_PRIVATE_KEY\b'; then
             if [ "${{ inputs.overwrite }}" != "true" ]; then
               echo "::error::MAVEN_GPG_PRIVATE_KEY 已存在。要换 key 请勾 overwrite"; exit 1
