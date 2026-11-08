@@ -16,6 +16,9 @@
 
 <a id="section-1"></a>
 
+
+> 📐 **交互式架构图表**：支持动态探查、缩放平移与主题切换的高保真架构图：[多端镜像同步引擎架构图](https://cybernova2333.github.io/anabranch-core/diagrams/anabranch-architecture.html)。
+
 ## 🏛️ 分层代码架构
 
 核心库通过 `Engine` 隔离网络取字节能力，`Downloader` 负责调度和文件提交。`aria2/` 是共享请求类型的独立后端，当前并不实现 `Engine`，也没有打进 core JAR；核心不反向依赖它或 Android。

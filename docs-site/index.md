@@ -32,6 +32,21 @@ features:
 
 在不稳定网络或多镜像源并发场景下，单连接下载极易中断甚至损坏文件。Anabranch 将目标文件拆解为受调度的逻辑分块，支持多条镜像源同时拉取；每一块独立重试、独立校验，最终在内存或临时卷中按序号原子组装，确保提交给上层的每一个成品文件均符合权威摘要。
 
+
+## 架构全景
+
+<div class="archify-diagram-card" style="margin: 1.5rem 0; border: 1px solid var(--vp-c-border); border-radius: 12px; overflow: hidden; background: var(--vp-c-bg-soft); box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; background: var(--vp-c-bg-elv); border-bottom: 1px solid var(--vp-c-border); font-size: 13px;">
+    <span style="font-weight: 600; color: var(--vp-c-text-1); display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 16px;">📐</span> 多端镜像同步引擎架构（交互式架构图表，支持平移 / 缩放 / 探查）
+    </span>
+    <a href="/diagrams/anabranch-architecture.html" target="_blank" rel="noreferrer" style="font-size: 12px; color: var(--vp-c-brand-1); text-decoration: none; font-weight: 500;">
+      在新窗口全屏打开 ↗
+    </a>
+  </div>
+  <iframe src="/diagrams/anabranch-architecture.html" width="100%" height="520px" frameborder="0" style="display: block; border: none;" allowfullscreen loading="lazy"></iframe>
+</div>
+
 ## 怎么用 / 快速上手
 
 ### 1. 运行环境与验证
