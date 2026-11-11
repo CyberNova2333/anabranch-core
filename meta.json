@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/CyberNova2333/cybernova-homepage/main/public/schemas/repo-meta.v1.json",
+  "schemaVersion": 1,
+  "slug": "anabranch-core",
+  "name": "Anabranch Core",
+  "title": {
+    "zh": "Anabranch Core · Java 8 与 Android 多源分块下载库",
+    "en": "Anabranch Core · Multi-Source Segmented Downloader for Java 8 & Android"
+  },
+  "visibility": "public",
+  "status": "active",
+  "category": "system-infra",
+  "featured": false,
+  "order": 9,
+  "repository": "https://github.com/CyberNova2333/anabranch-core",
+  "homepage": "https://cybernova2333.github.io/anabranch-core/",
+  "docsUrl": "https://cybernova2333.github.io/anabranch-core/docs/",
+  "license": "Apache-2.0",
+  "primaryLanguage": "Java",
+  "techStack": [
+    "Java 8",
+    "Android minSdk 21",
+    "C++ JNI",
+    "aria2",
+    "Gradle"
+  ],
+  "tags": [
+    "download-library",
+    "multi-source",
+    "segmented-download",
+    "android",
+    "java"
+  ],
+  "summary": {
+    "zh": "面向 Java 8 与 Android (minSdk 21) 的无第三方依赖多源分块下载库，支持多镜像分块下载、失败换源重试、断点续传与哈希校验，另附可选的 aria2 JNI 后端。",
+    "en": "Zero-dependency multi-source segmented download library for Java 8 and Android (minSdk 21) with mirror failover, resume support, digest verification, and an optional aria2 JNI backend."
+  },
+  "highlights": {
+    "zh": [
+      "核心模块使用纯 Java 8 编写，不依赖第三方库或 Android 专有 API，可直接用于 minSdk 21 项目",
+      "支持从多个镜像源同时拉取不同分块，按下载速度分配剩余分块，并在合并前校验文件摘要",
+      "除纯 Java 实现外，还提供了一个单独打包的 aria2 JNI 原生下载后端模块"
+    ],
+    "en": [
+      "Core module written in plain Java 8 with zero third-party dependencies, compatible with Android minSdk 21",
+      "Downloads segments across multiple mirrors, schedules chunks by speed, and verifies file digests",
+      "Provides an optional standalone aria2 JNI native backend artifact alongside the pure-Java engine"
+    ]
+  },
+  "quickStart": [
+    "sh tools/run-checks.sh",
+    "sh aria2/native/run-host-tests.sh"
+  ],
+  "roadmap": {
+    "stage": "日常维护",
+    "stageEn": "Maintained",
+    "milestone": {
+      "zh": "已完成纯 Java 分块下载核心与 aria2 JNI 模块的单元测试和编译流水线。",
+      "en": "Pure-Java segmented downloader and optional aria2 JNI module are tested and built via CI."
+    }
+  },
+  "updatedAt": "2026-11-11"
+}
