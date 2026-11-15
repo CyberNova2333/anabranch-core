@@ -1,26 +1,14 @@
 # 指南变更记录
 
-## 2026-10-29：建立主流程指南并对齐文档入口
+## 2026-11-15：升级为 Standard 模式并重置全仓文档体系
 
-- 触发：用户授权 widened docs sync；同步决策为 `foreground patch`，在共享工作树完成指定文档层。
-- 建立阅读路径、主流程、代码地图、两遍源码证据与阅读质量审计；范围限定为 纯 Java 下载器从请求、源探测到分块校验与成品提交。
-- 保留中文 README 的现有正确内容，补齐英文入口和文档站操作；AGENTS 成为规则单一来源，CLAUDE 简短引用。
-- 新建 MkDocs 1.6.1 内置主题站点；验证输出写入仓库外目录，保留业务构建产物。
-- 验证：`validate_repo_docs.py --lite` 与 `mkdocs build --strict` 均退出 0；源码链接 INFO 和保留提示见独立维护报告。未跑业务测试，不代表生产验证。
-- 边界：aria2 独立 artifact、JNI/native 构建与 Android 真机接线仅列入口，不追踪其实现；Maven 发布、包签名和历史 bundle 导入不在主流程范围。
+- 模式升级：将 `repo-docs/` 从 Lite 扩展为 Standard 模式，新增 `modules/scheduling-and-failover.md`、`modules/resume-and-integrity.md`、`modules/engine-and-aria2-boundary.md` 与 `glossary.md`，补全中层行为机制、常量契约与边界示例。
+- 事实校准：按源码重写主流程演练与代码地图，核实 `Downloader.Builder` 参数、`Source.maxChunks` 现状、`.meta` v2 协议、`Aria2Downloader` 串行与 dead-man's switch 机制，并清理 `docs-site` 中全部与仓库无关的样板幻觉文案。
+- 载体协同：`docs-site` 采用 VitePress `guideLinks` 与 `@include` 直接复用本目录的运行走读与代码地图；同时迁移并移除过时草案 `docs/DESIGN.md`，保留 `docs/RELEASING.md` 与 `docs/ARIA2.md`。
+- 验证记录：实测 `sh tools/run-checks.sh` 在 Java 8 编译、`check-core-boundaries.py`（19 文件）与 `SingleSourceTest`（21/0）通过，在 `MultiSourceTest` 暴露 `31/2`（`testStalledSourceIsBoundedByBudget` 探头读超时）；同步执行 `validate_repo_docs.py` 与 `pnpm --dir docs-site run docs:build`。
 
-Synced through 1f0caca4a75ad9584ddd84ed6ffbbcee66317fe7
+Synced through 8c03cd4f5621acd4e7cbcf02cbcd4f85a61efb4f
 
-## 统一维护复核（2026-10-29）
+## 2026-10-29：初建指南并统一 VitePress 入口
 
-补齐中英 README 入口、贡献与安全说明；AGENTS 为规范正文，CLAUDE 为引用入口。补充钩子检查暂存内容、提交标题及推送新增历史，保留项目原有检查；安装步骤与边界见根 SECURITY 和 CONTRIBUTING。独立站点采用 VitePress 默认主题，源码链接在网页中保留为精确路径。
-
-本地分支规范化了 1 条提交信息；重建对象均已验证 SSH 签名，文件树、署名、日期和父图保持对应。原引用有本机备份，远端与标签未改。
-
-文档结构校验和站点构建均退出 0；共用护栏的 9 项隔离测试通过。业务测试、生产部署和远端发布未因此视为通过。大文件扫描边界见 SECURITY。
-
-Synced through 1f0caca4a75ad9584ddd84ed6ffbbcee66317fe7；源码树与原锚点对应，未提交实现仍按工作树单列。
-
-## 文档站恢复默认主题（2026-10-29）
-
-按用户要求统一使用 VitePress 默认主题，移除额外配色、字体、圆角和入场动效。指南正文、源码定位及导航保留；文档依赖与业务依赖分开。新建站点从 MkDocs 迁移为 VitePress，既有两个 VitePress 站点使用原生主题入口。
+- 建立 `repo-docs/` Lite 指南、中英 README 路由表与 VitePress 站内集成，将源码验证命令与代码地图入口固定至仓库脚本与核查基线。

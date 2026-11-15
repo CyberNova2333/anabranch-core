@@ -112,7 +112,7 @@ AAR 内，分发页面还需注明许可与源码获取方式）。**真机验�
 本机不需要装 gpg、不需要有任何 key——runner 上生成 RSA 4096 + 随机口令、公钥传
 keyserver.ubuntu.com、私钥与口令直接写进仓库 secret、指纹写进 variable
 `MAVEN_GPG_FINGERPRINT`，私钥全程不经过任何人的电脑。它唯一的前提是一个能写
-secret 的令牌（Actions 自带的 `` 没这个权限）：
+secret 的令牌（Actions 自带的 `GITHUB_TOKEN` 没这个权限）：
 
 1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate：
    Repository access 只选本仓库；Permissions 只给 **Secrets: Read and write** 与

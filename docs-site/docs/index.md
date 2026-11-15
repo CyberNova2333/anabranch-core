@@ -1,43 +1,60 @@
----
-title: 快速入门
-description: Anabranch Core 是一个面向个人主开发命名空间的**多代码托管平台基线对齐与增量重签镜像同步引擎**。
----
+# 定位、双产物与快速开始
 
-# 快速入门
+Anabranch Core 解决的是单文件、多镜像并发下载与可信校验问题。与常见只面向单 URL 多线程拉取的下载库不同，它按固定分块为单元调度多条镜像：先探头确认长度与 `Range` 能力，再在传输失败或坏块验签失败时切源重试，并在重命名落盘前完成 SHA-256 核验。
 
-Anabranch Core 是一个面向个人主开发命名空间的**多代码托管平台基线对齐与增量重签镜像同步引擎**。
+## 核心能力对比
 
-## 解决的核心痛点
+| 能力维度 | Android 系统 `DownloadManager` | 常规单源分段下载库 | `Anabranch Core` |
+| --- | --- | --- | --- |
+| 同文件多镜像并发拉取 | 不支持 | 不支持 | 支持（`SourceSet` + `Policy`） |
+| 按分块失败切源与熔断 | 不支持 | 不支持 | 支持（`RETRY_SAME` / `SWITCH_SOURCE` / 拉黑） |
+| 同源 `ETag` 与跨源摘要续传 | 仅黑盒内部处理 | 多为单 URL 断点 | `anabranch-meta/2` + `Integrity` 逐块/整份校验 |
+| 零三方依赖 / `minSdk 21` 兼容 | 系统内置 | 通常带反射/线程库依赖 | 19 个纯 Java 8 文件，无需 desugaring |
+| 可选原生大吞吐后端 | 无 | 无 | 独立 `anabranch-aria2` AAR（libaria2 JNI） |
 
-- **痛点 1**：跨 GitHub 与备用冷备平台同步时，容易误用不兼容的 SSH 签名密钥或泄露专用邮箱
-- **痛点 2**：手动 cherry-pick 或两端 push 容易导致 Commit SHA 冲突、历史断裂与文件树不一致
-- **痛点 3**：缺乏严格的机器校验确保两端工作区 SHA-256 散列严格一一对齐
+## 双产物隔离结构
 
----
+为保证绝大多数调用方零 native 体积、零 GPL 传染，仓库将下载实现严格拆分为两个产物：
 
-## 环境准备
+| Maven 构件（`build.gradle.kts`） | 包名 | 实现方式 | 运行时依赖与许可证 |
+| --- | --- | --- | --- |
+| `io.github.cybernova2333:anabranch-core:0.1.0` | `io.anabranch.*` | 纯 Java 8（`HttpURLConnection`） | **零第三方依赖**，不引入 `android.*`，`AGPL-3.0-only` |
+| `io.github.cybernova2333:anabranch-aria2:0.1.0`（可选） | `io.anabranch.aria2.*` | Java 胶水 + JNI `libaria2` `.so` | 依赖同版本 core；二进制 AAR 按 `GPL-3.0-or-later` 分发 |
 
-Python 3.10+，Git 2.34+（支持 SSH 提交签名）。
+> **发布状态提醒**：`build.gradle.kts` 已声明上述坐标与签名打包任务，但制品**尚未自动推至 Maven Central**（发布为手动动作）。集成前请先核对 Central 上是否已有目标版本；如从源码直连，可直接引用 `src/io/anabranch/` 或在本地执行 `gradle centralBundle` 检验构建产物。
 
----
+## 一分钟源码编测（零 Gradle 依赖）
 
-## 快速安装与运行
+日常开发与基线验证不需要安装 Gradle 或提交 `gradlew`——仓库只依赖 JDK（支持 `javac --release 8`）、Python 3 与 POSIX shell：
 
-```bash
-# 1. 检查当前仓库的双端状态
-python dual_push.py status --repo /path/to/repo
-
-# 2. 将本地最新的 GitHub 主干增量重签并同步至备用镜像
-python dual_push.py push --repo /path/to/repo
-
-# 3. 验证双端 SHA-256 文件树一致性
-python dual_push.py verify --repo /path/to/repo
+```sh
+sh tools/run-checks.sh
 ```
 
----
+脚本会依次执行：
+1. 以 `javac --release 8` 分别编译 `src/io/anabranch/*.java` 与 `aria2/src/io/anabranch/aria2/*.java`（直接在类库级别封堵 Java 9+ 与 Android API 24+ 误用）。
+2. 执行 `python3 tools/check-core-boundaries.py`，检查 19 个核心源文件是否零 `android.*`、零外部依赖、零反向引擎依赖。
+3. 启动本地真实 HTTP 测试服务器依次运行 `SingleSourceTest`、`MultiSourceTest`、`ThrottleTest` 与 `Aria2FailoverTest`。
 
-## 接下来探索
+## 最小接入示例（纯 Java / Android）
 
-- 深入了解系统内部流转：查阅 [系统架构与设计](/docs/architecture)
-- 探索全部配置参数与高级场景：查阅 [配置与使用指南](/docs/configuration)
-- 遇到问题排错：查阅 [常见问题与排错](/docs/faq)
+```java
+Downloader downloader = Downloader.newBuilder()
+    .defaultChunks(8)
+    .maxConcurrent(4)
+    .bytesPerSecond(0) // <= 0 不限速
+    .build();
+
+SourceSet sources = new SourceSet(Arrays.asList(
+    Source.ofBase("cdn-a", "https://cdn-a.example.test/releases/"),
+    Source.ofBase("cdn-b", "https://cdn-b.example.test/releases/")),
+    Policy.fastestFirst());
+
+Result result = downloader.download(
+    new Request("sdk.zip", new File(targetDir, "sdk.zip"), integrity, 8, true),
+    sources,
+    Listener.NONE,
+    Cancellation.NONE);
+```
+
+接下来请继续阅读 [集成配置、原生构建与排错](/docs/deployment)，核对全部可调参数、Android 权限及可选 `aria2` 后端构建流程。

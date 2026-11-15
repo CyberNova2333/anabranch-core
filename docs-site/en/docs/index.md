@@ -1,44 +1,57 @@
----
-title: Quick Start
-description: Anabranch Core powers speculative workflow branching and deterministic state coordination.
----
+# Overview & Quick Start
 
-::: warning AI Translation Notice
-This document was translated by an AI language model. In case of any discrepancies or ambiguities, please refer to the [original Chinese documentation](/docs/) as the authoritative reference.
-:::
+Anabranch Core solves multi-source segmented downloading and verified delivery for a single file. Instead of pulling segments from one fixed URL, it probes available mirrors, dispatches byte ranges across mirrors using throughput-aware policies, fails over per chunk, and verifies SHA-256 digests before moving the final file into place.
 
-# Quick Start
+## Capability Comparison
 
-Anabranch Core powers speculative workflow branching and deterministic state coordination.
+| Capability | Android `DownloadManager` | Typical Single-Source Downloaders | `Anabranch Core` |
+| --- | --- | --- | --- |
+| Multi-mirror parallel chunking | No | No | Yes (`SourceSet` + `Policy`) |
+| Per-chunk failover & circuit breaker | No | No | Yes (`RETRY_SAME` / `SWITCH_SOURCE` / disable) |
+| Same-source ETag & cross-source resume | Opaque internal state | Usually single-URL bound | `anabranch-meta/2` + `Integrity` digests |
+| Zero deps / Android `minSdk 21` | System service | Usually pulls extra libs | 19 plain Java 8 files, no desugaring |
+| Optional native accelerator | No | No | Standalone `anabranch-aria2` AAR (`libaria2`) |
 
-## Core Problems Solved
+## Two-Artifact Isolation
 
-- **Pain Point 1**: Linear state machines cannot efficiently explore exploratory agent branches without heavy state cloning.
-- **Pain Point 2**: Rollback failures leading to dirty state contamination across exploratory paths.
-- **Pain Point 3**: Excessive memory allocation and GC pauses during high-frequency branch evaluation.
+To protect pure-Java integrators from native binary bloat and GPL linking obligations, the codebase separates core and native backends into two independent Maven artifacts:
 
----
+| Maven Coordinates (`build.gradle.kts`) | Package | Runtime Implementation | License & Dependencies |
+| --- | --- | --- | --- |
+| `io.github.cybernova2333:anabranch-core:0.1.0` | `io.anabranch.*` | Plain Java 8 (`HttpURLConnection`) | Zero third-party deps, zero `android.*`, `AGPL-3.0-only` |
+| `io.github.cybernova2333:anabranch-aria2:0.1.0` (optional) | `io.anabranch.aria2.*` | Java glue + JNI `libaria2` `.so` | Depends on core; combined binary AAR is `GPL-3.0-or-later` |
 
-## Prerequisites
+> **Release status**: Coordinates and signing/bundling tasks exist in `build.gradle.kts`, while Maven Central publication is manual via `docs/RELEASING.md` and not yet live by default. Verify availability on Central or compile `src/` directly.
 
-Rust 1.80+ (Cargo), Node.js 20+, pnpm 12.6.0.
+## One-Minute Local Verification (No Gradle Required)
 
----
+Daily development requires only a JDK supporting `javac --release 8`, Python 3, and a POSIX shell (Gradle wrapper is intentionally omitted):
 
-## Quick Installation & Launch
-
-```bash
-# 1. Install project dependencies
-pnpm install
-
-# 2. Run local tests and verification
-pnpm test
+```sh
+sh tools/run-checks.sh
 ```
 
----
+This script compiles both `src/io/anabranch/*.java` and `aria2/src/io/anabranch/aria2/*.java` with `--release 8`, enforces dependency isolation via `tools/check-core-boundaries.py`, and executes real loopback HTTP integration suites (`SingleSourceTest`, `MultiSourceTest`, `ThrottleTest`, and `Aria2FailoverTest`).
 
-## Next Steps
+## Minimal Java / Android Call
 
-- Explore internal mechanics: [Architecture & Design](/en/docs/architecture)
-- Comprehensive configuration reference: [Configuration Guide](/en/docs/configuration)
-- Troubleshooting & FAQ: [FAQ & Diagnostics](/en/docs/faq)
+```java
+Downloader downloader = Downloader.newBuilder()
+    .defaultChunks(8)
+    .maxConcurrent(4)
+    .bytesPerSecond(0) // <= 0 means unlimited
+    .build();
+
+SourceSet sources = new SourceSet(Arrays.asList(
+    Source.ofBase("cdn-a", "https://cdn-a.example.test/releases/"),
+    Source.ofBase("cdn-b", "https://cdn-b.example.test/releases/")),
+    Policy.fastestFirst());
+
+Result result = downloader.download(
+    new Request("sdk.zip", new File(targetDir, "sdk.zip"), integrity, 8, true),
+    sources,
+    Listener.NONE,
+    Cancellation.NONE);
+```
+
+Continue to [Integration, aria2 Build & FAQ](/en/docs/deployment) for builder options, Android constraints, and troubleshooting.

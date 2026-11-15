@@ -16,7 +16,7 @@
 1. **成熟的连接管理**——连接复用、DNS 缓存、对烂网络的容忍，aria2 被真实世界
    捶打了二十年；
 2. **低端设备上的吞吐**——Java 层每字节都要过一遍 JNI/堆拷贝，native 直写省掉；
-3. **兑现「能换引擎」的承诺**——分层（DESIGN.md §三）的价值要靠第二个引擎证明。
+3. **兑现「能换引擎」的承诺**——核心传输分层（`Engine` 与调度解耦）的价值要靠第二个引擎证明。
 
 第 3 条在写这份稿子时被部分证伪了，见下一节——这正是先写设计稿的意义。
 
@@ -32,7 +32,7 @@
 
 ## 二、集成形态：Engine 假设的修正（本稿最重要的一节）
 
-DESIGN.md §三 假设 aria2 以 `Aria2Engine implements Engine` 接入——「取一个
+最初设计假设 aria2 以 `Aria2Engine implements Engine` 接入——「取一个
 字节区间」。**这个假设对 aria2 大概率不成立**：aria2 自己管分段与断点，
 不提供「下载指定字节区间」的选项；调用方塞 `Range` 头会与它自己发的 Range
 冲突，行为未定义。这不是实现难度问题，是在逆着工具的纹理用它。
@@ -182,8 +182,8 @@ libxml2/SQLite/libssh2，gnutls 后端随之不含 OpenSSL。功能面就是宿�
 构建那一份——28 项真下载测试全在其上跑过；默认仍是全量（已验证配方）。
 
 剩余（按序）：真机装载与下载验证（.so 与 AAR）→ 定裁剪版还是全量版作为
-发布形态 → anabranch-aria2 的 Maven 坐标与发布（AAR 上 Central 需要
-`packaging=aar` 的 POM，届时并进 RELEASING.md）。
+发布形态；`anabranch-aria2` 的 AAR Maven 打包与 Central 发布流已接入
+`build.gradle.kts` 与 [`RELEASING.md`](RELEASING.md) §一·五，待真机验证后发版。
 
 ## 七、测试（已落地）
 

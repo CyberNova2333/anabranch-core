@@ -1,48 +1,59 @@
 # 代码地图
 
-先读[一次真实操作的阶段交接](walkthroughs/one-real-run.md)，再按这里的职责定位。覆盖范围为 纯 Java 下载器从请求、源探测到分块校验与成品提交；这不是全仓库架构清单。
+请先阅读[一次真实运行全流程](walkthroughs/one-real-run.md)建立主干时序，再按本页职责定位需要改动的源文件与测试套件。全仓源码主要划分为纯 Java 下载核心、真实 HTTP 测试套件、检查脚本与可选原生 `aria2` 后端四大区域。
 
 | 路径 | 职责 | 关键代码 | 与主流程的关系 |
 | --- | --- | --- | --- |
-| `src/io/anabranch/` | 纯 Java 公开契约和下载主流程 | [下载器](../src/io/anabranch/Downloader.java)、`Request`、`Result`、`Listener`、`Cancellation` | 进入下载、通知进度、返回结果 |
-| `src/io/anabranch/` 的策略与状态 | 选源、统计、续传、校验与限速 | [策略](../src/io/anabranch/Policy.java)、`SourceSet`、`Stats`、`ResumeState`、`Integrity`、`RateLimiter` | 按块决策，保留进度并限制提交 |
-| `src/io/anabranch/` 的传输 | 探测和取范围字节 | [引擎契约](../src/io/anabranch/Engine.java)、`HttpEngine`、`Probe`、`ProbeReport` | 引擎不引用调度层 |
-| `test/` | 本机真实 HTTP 测试支持 | [单源](../test/SingleSourceTest.java)、[多源](../test/MultiSourceTest.java)、[限速](../test/ThrottleTest.java) | 验证坏块、切源和真实耗时 |
-| `tools/` 的检查入口 | 编译及边界检查 | [检查脚本](../tools/run-checks.sh)、`check-core-boundaries.py` | 组合 Java 8 编译和回归，钩子实现不在指南范围 |
-| `aria2/` | 独立后端及 native 包装 | [Java 入口](../aria2/src/io/anabranch/aria2/Aria2Downloader.java)、`native/`、`test/` | 相邻独立 artifact，仅作边界索引 |
+| `src/io/anabranch/` | 纯 Java 8 下载调度、选源、续传、校验与传输 | [Downloader](../src/io/anabranch/Downloader.java)、[SourceSet](../src/io/anabranch/SourceSet.java)、[HttpEngine](../src/io/anabranch/HttpEngine.java) | 承担核心多源分块下载全部运行期逻辑 |
+| `test/` | 本地真实 HTTP 模拟服务器驱动的回归测试集 | [SingleSourceTest](../test/SingleSourceTest.java)、[MultiSourceTest](../test/MultiSourceTest.java)、[ThrottleTest](../test/ThrottleTest.java) | 验证断点续传、坏块拦截、切源熔断与限速精度 |
+| `aria2/` | 可选原生 libaria2 Java 胶水层、JNI 实现及专属测试 | [Aria2Downloader](../aria2/src/io/anabranch/aria2/Aria2Downloader.java)、[FileBackendSelector](../aria2/src/io/anabranch/aria2/FileBackendSelector.java) | 独立 AAR 产物，共享请求接口但接管整文件多 URI 下载 |
+| `tools/` | Java 8 编译、核心依赖边界校验与 Git 钩子 | [run-checks.sh](../tools/run-checks.sh)、[check-core-boundaries.py](../tools/check-core-boundaries.py) | 守住零依赖、API 21 兼容性与单向依赖边界 |
 
 ## `src/io/anabranch/`
 
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
-| `Downloader.java` | 探测、分块、失败重试和最终提交 | `download` / `fetchOneChunk` / `commit` | 库调用方；单源/多源/限速测试 |
-| `ResumeState.java` / `Integrity.java` | 续传状态与可选摘要契约 | `matches` / `PENDING` / `VERIFIED` | Downloader；摘要和续传回归 |
-| `Engine.java` / `HttpEngine.java` | 探测并取指定区间 | `probe` / `fetchRange` | Downloader；真实本机 HTTP 测试 |
+| `Downloader.java` | 下载编排、线程池分块调度、退避预算与成品提交 | `newBuilder` / `download` / `probeAll` / `commit` | 上层应用；全部三套核心测试 |
+| `Request.java` / `Result.java` | 不可变任务参数描述与交付字节/校验汇总 | `Request.of` / `allowResume` / `chunkVerified` | 调用方、`Downloader`、`Aria2Downloader` |
+| `Source.java` / `SourceSet.java` | 镜像 URL 解析回调、运行期禁用状态与 EMA 吞吐跟踪 | `Source.Resolver` / `recordSuccess` / `available` | `Downloader`、`Policy`、`Aria2Downloader` |
+| `Policy.java` / `Stats.java` / `ChunkRef.java` | 选源算法、失败处置状态机及分块区间元数据 | `fastestFirst` / `weighted` / `Decision` | `Downloader`、`MultiSourceTest` |
+| `ResumeState.java` / `Integrity.java` | `.part`/`.meta` v2 格式读写与逐块/整份 SHA-256 契约 | `anabranch-meta/2` / `matches` / `hashFor` | `Downloader`、`SingleSourceTest` |
+| `Engine.java` / `HttpEngine.java` / `Probe.java` / `ProbeReport.java` | 只负责探头与闭区间写入的传输接口及默认 JDK 实现 | `probe` / `fetchRange` / `Accept-Encoding: identity` | `Downloader`、`SingleSourceTest` |
+| `RateLimiter.java` / `SpeedMeter.java` / `Listener.java` / `Cancellation.java` / `Logger.java` | 令牌桶限速、3 秒滑窗测速、事件回调、轮询取消与日志 | `acquire` / `onSourceSwitch` / `isCancelled` | `Downloader`、`HttpEngine`、`ThrottleTest`、`Aria2Downloader` |
 
 ## `test/`
 
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
-| `SingleSourceTest.java` | 坏块、续传、ETag 与无 Range | `testChunkVerifyCatchesCorruption` / `testNoRangeServer` | tools/run-checks.sh |
-| `MultiSourceTest.java` / `ThrottleTest.java` | 多源和整体写侧限速回归 | 测试主类 `main` | tools/run-checks.sh；真实 HTTP |
+| `SingleSourceTest.java` | 单源探测、半截断连续传、第 2 块坏块拦截、ETag 变更作废、无 Range 降级 | `main`（21 项断言） | `tools/run-checks.sh`、`build.gradle.kts` |
+| `MultiSourceTest.java` | 多源分片散列、挂源切换、全挂汇总、预算超限拦截与退避测量 | `main`（33 项断言） | `tools/run-checks.sh`、`build.gradle.kts` |
+| `ThrottleTest.java` | 写入侧全局限速令牌桶速率收敛与取消及时性测试 | `main`（13 项断言） | `tools/run-checks.sh`、`build.gradle.kts` |
 
 ## `aria2/`
 
 | 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
 | --- | --- | --- | --- |
-| `aria2/src/io/anabranch/aria2/Aria2Downloader.java` | 独立后端入口，仅作边界定位 | `Aria2Downloader` | 独立 artifact，不进入 core JAR |
-| `aria2/test/Aria2FailoverTest.java` / `aria2/native/` | 文件 IO 回归及真实 native 独立验证 | `Aria2FailoverTest`；native 流程暂缓 | run-checks 与 run-host-tests 是不同检查 |
+| `aria2/src/io/anabranch/aria2/Aria2Downloader.java` | 串行 `runOnce` 会话驱动、`.a2part` 管理与后置 `Integrity` 校验 | `newBuilder().stateDir(...)` / `download` | 选用原生后端的 Android 应用；`Aria2DownloaderTest` |
+| `aria2/src/io/anabranch/aria2/BackendSelector.java` / `FileBackendSelector.java` | `aria2.backend` 与 `aria2.armed` 落盘切换 `openssl`/`gnutls` | `current` / `arm` / `disarm` / `reportLoadFailure` | `Aria2Downloader`、`Aria2FailoverTest` |
+| `aria2/src/io/anabranch/aria2/Aria2Native.java` & `aria2/native/` | 9 个导出 JNI 入口、`compat_arm.c` 兜底及 NDK/宿主构建脚本 | `ANABRANCH_ARIA2_1.0` / `build-aria2.sh` / `package-aar.sh` | `Aria2Downloader`、`run-host-tests.sh`、`build-aria2.yml` |
+| `aria2/test/Aria2FailoverTest.java` / `Aria2DownloaderTest.java` | dead-man's switch 文件协议单测与宿主真下载全路径测试 | `Aria2FailoverTest`（10 项）/ `Aria2DownloaderTest`（28 项） | `tools/run-checks.sh`、`aria2/native/run-host-tests.sh` |
+
+## `tools/`
+
+| 重要代码 | 功能 | 关键符号 | 调用方 / 使用方 |
+| --- | --- | --- | --- |
+| `tools/run-checks.sh` | 串联 `--release 8` 编译、边界扫描及四套 Java 主类回归测试 | `javac --release 8` | 本地提交前检查、`.github/workflows/checks.yml` |
+| `tools/check-core-boundaries.py` | 静态核对 `src/io/anabranch/` 19 个文件的包依赖与单向分层 | `FORBIDDEN_IMPORTS` | `tools/run-checks.sh` |
+| `tools/check-commit-messages.py` / `tools/githooks/` | 强制检查提交标题格式、`文档:` 行、`Co-authored-by` 尾注与大文件守卫 | `_msgrules.py` / `commit_msg.py` | 本地 Git Hooks、`.github/workflows/checks.yml` |
 
 ## 修改入口与验证
 
-分块重试、提交或写入限速从 `Downloader` 开始，分别对照单源/多源/限速测试。修改选路同时检查 `Policy`、`Stats` 与 `SourceSet`，纯策略规则用构造统计验证，端到端不赌调度顺序。修改续传检查 `ResumeState` 的源身份、长度与单位，并核对跨源与 ETag 回归。
+涉及分块划分、退避预算或提交顺序的改动从 `Downloader.java` 入手，对应检验 `SingleSourceTest` 与 `MultiSourceTest`；调整 `SourceSet` 评分、禁用条件或 `Policy` 时同步核对 `Stats` 读写契约；任何修改 `Engine` 或 `HttpEngine` 的提交都必须保持对调度层零反向依赖，并在变动后重新运行 `sh tools/run-checks.sh`。
 
-发布元数据在 `build.gradle.kts` 和 `docs/RELEASING.md`；日常正确性入口仍是 `tools/run-checks.sh`。Gradle `check` 只配置三套 core 主类，不等同于该脚本包含的 aria2 文件 IO 回归。
+修改 `aria2/` 原生胶水、符号表或构建脚本后，Java 侧文件切换协议仍受 `tools/run-checks.sh` 覆盖，但真实 `libaria2` 会话驱动需在具备完整编译环境的宿主上运行 `sh aria2/native/run-host-tests.sh` 验证。仓库打包与 Central 发布任务定义在 [Gradle 脚本](../build.gradle.kts) 与 [发布手册](../docs/RELEASING.md)，不用于日常单测开发。
 
 ## 覆盖范围
 
-aria2 独立 artifact、JNI/native 构建与 Android 真机接线仅列入口，不追踪其实现；Maven 发布、包签名和历史 bundle 导入不在主流程范围。
-
-源码链接指向仓库文件。独立文档站不携带这些文件；可按表中的精确路径在克隆中查找。需要确认哪些代码已经逐段核对，查看[证据覆盖记录](references/source-evidence.md)。
+本代码地图覆盖 `src/io/anabranch/` 核心库、`test/` 回归测试、`aria2/` 原生后端 Java 与 JNI 胶水入口以及 `tools/` 检查脚本；Maven Central 上传自动化（`.github/workflows/build-core.yml`、`setup-signing-key.yml`）与原生交叉编译流水线（`build-aria2.yml`）均属于构建与发布基础设施，各自以对应 YAML 与 [发布手册](../docs/RELEASING.md) 为权威来源。核查所有源码声明的检验依据请查看[源码证据审计](references/source-evidence.md)。
 
 证据状态：除特别标注外，本页基于当前源码已确认。

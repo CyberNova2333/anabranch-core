@@ -2,53 +2,56 @@
 layout: home
 
 hero:
-  name: Anabranch Core Engine
-  text: Speculative Workflow Engine
-  tagline: Divergent branch routing, snapshot tree coordination, and speculative workflow execution engine written in Rust.
+  name: Anabranch Core
+  text: Multi-Source Segmented Downloader for Java 8 & Android
+  tagline: Zero-dependency pure Java 8 core compatible with Android minSdk 21—parallel multi-mirror chunking, failover, resumable state, and per-chunk SHA-256 verification, plus an optional standalone aria2 JNI backend.
   actions:
     - theme: brand
-      text: Get Started
+      text: Getting Started
       link: /en/docs/
     - theme: alt
-      text: Interactive Architecture
+      text: Architecture & Source
       link: /en/docs/architecture
     - theme: alt
-      text: GitHub Repo
+      text: GitHub Repository
       link: https://github.com/CyberNova2333/anabranch-core
 
 features:
-  - title: Branch Fork & Merge
-    details: Instant snapshotting and copy-on-write state divergence across multiple reasoning paths.
-  - title: Speculative Execution
-    details: Parallel branch evaluation with zero-latency rollback and deterministic conflict resolution.
-  - title: High Performance Rust
-    details: Strict memory safety, minimal memory overhead, and lightning-fast sub-millisecond execution.
+  - title: Multi-Mirror Chunk Scheduling
+    details: Splits a single file across mirrors using Policy.fastestFirst() (EMA throughput vs. in-flight load) or Policy.weighted().
+  - title: Failover & Retry Budget
+    details: Caps each chunk at 6 attempts, up to 2000ms backoff, and a 60s chunkRetryBudgetMs counting only failures—not healthy slow transfers.
+  - title: Resumable State & Digest Guard
+    details: Persists .part and anabranch-meta/2 (.meta) with P/D/V states, same-source ETag checks, and per-chunk + whole-file SHA-256 before rename.
+  - title: Clean Artifact & License Isolation
+    details: Core has 19 Java 8 files (AGPL-3.0-only, zero android.* or Java 9+ APIs). Optional aria2 JNI backend ships as a separate GPL-3.0-or-later AAR.
 ---
 
-::: warning AI Translation Notice
-This site and documentation have been translated by an AI language model. In case of any discrepancies or ambiguities, please refer to the [original Chinese documentation](/) as the authoritative source.
-:::
+## Quick Jump by Role & Goal
 
-## Architecture Overview
+| Role / Goal | Recommended Page | What You Get |
+| --- | --- | --- |
+| **App Integrator (JVM / Android)** | [Overview & Quick Start](/en/docs/) | Compare `anabranch-core` vs `anabranch-aria2`, check coordinates, and run `tools/run-checks.sh` |
+| **Build & Deployment Engineer** | [Integration, aria2 Build & FAQ](/en/docs/deployment) | Inspect defaults, `minSdk 21` no-desugaring rules, NDK/host aria2 builds, and troubleshooting |
+| **Extension Developer** | [Public API & Extension Points](/en/docs/contracts) | Implement custom `Engine` (e.g., OkHttp), `Policy`, `Source.Resolver`, and compare `Aria2Downloader` |
+| **Protocol & Reliability Reviewer** | [Scheduling, Resume & Integrity](/en/docs/mechanisms) | Review EMA scoring, `.meta` v2 layout, commit ordering, and TLS dead-man's switch |
+| **Code Maintainer & Release Owner** | [Architecture](/en/docs/architecture) · [Code Map](/en/docs/code-map) | Trace one run end-to-end, map classes/tests, and check [Design Decisions & Releasing](/en/docs/decisions) |
 
-<div class="archify-diagram-card" style="margin: 1.5rem 0; border: 1px solid var(--vp-c-border); border-radius: 12px; overflow: hidden; background: var(--vp-c-bg-soft); box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
-  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; background: var(--vp-c-bg-elv); border-bottom: 1px solid var(--vp-c-border); font-size: 13px;">
-    <span style="font-weight: 600; color: var(--vp-c-text-1); display: flex; align-items: center; gap: 8px;">
-      <span style="font-size: 16px;">📐</span> Anabranch Core Architecture (Archify interactive diagram; pan / zoom / inspect supported)
-    </span>
-    <a href="/diagrams/anabranch-core-architecture.html" target="_blank" rel="noreferrer" style="font-size: 12px; color: var(--vp-c-brand-1); text-decoration: none; font-weight: 500;">
-      Open Fullscreen ↗
-    </a>
-  </div>
-  <iframe src="/diagrams/anabranch-core-architecture.html" width="100%" height="520px" frameborder="0" style="display: block; border: none;" allowfullscreen loading="lazy"></iframe>
-</div>
+## Minimal Usage
 
-## Quick Start Demo
+```java
+Downloader dl = Downloader.newBuilder()
+    .defaultChunks(8)
+    .maxConcurrent(4)
+    .chunkRetryBudgetMs(60_000)
+    .build();
 
-```bash
-# 1. Install project dependencies
-pnpm install
+SourceSet sources = new SourceSet(Arrays.asList(
+    Source.ofBase("cdn-a", "https://cdn-a.example.test/pkg/"),
+    Source.ofBase("cdn-b", "https://cdn-b.example.test/pkg/")),
+    Policy.fastestFirst());
 
-# 2. Run local tests
-pnpm test
+Result res = dl.download(
+    new Request("app.bin", new File("out/app.bin"), integrity, 8, true),
+    sources, Listener.NONE, Cancellation.NONE);
 ```

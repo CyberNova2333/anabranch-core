@@ -1,58 +1,69 @@
 # 一份文件怎样从多个源变成成品
 
-下载成功需要回答两个不同问题：字节是否取齐，以及这些字节是否确实属于调用方期望的文件。这里跟踪纯 Java 路径：请求描述文件和摘要，下载器决定每块从哪里取，校验通过后再提交目标文件。
+一次下载任务需要回答两个互相独立的问题：所有字节是否已经取齐，以及这些字节是否确实属于调用方期望的文件。纯 Java 主路径把请求描述、多源统计、区间传输、状态持久化与最终替换拆成明确阶段，确保传输成功不会直接冒充内容可信。
 
-难点是一个块传输成功仍可能内容错误，必须把源可用、进度与可信摘要验证分开。
+整条链路的难点在于故障可能发生在任何一步：镜像响应超时、服务端忽略分块请求、同源文件内容更新，或跨镜像出现旧版本漂移。本页跟踪一次完整运行如何在正常完成与异常中止时守住成品边界。
 
-## Step 1: 调用方描述任务与可信摘要
+## Step 1: 调用方提交请求与源集合
 
-调用方提供逻辑文件名、目标路径和源集合；每个源将逻辑名解析为自己的 URL。下面的中性调用形状来自现有 API，示例地址不是实际服务：
+调用方首先准备目标文件路径、逻辑文件名和候选镜像集合，并可选择性附带逐块或整份摘要期望。如果目标地址只是简单前缀拼接，可使用便利构造；若镜像携带签名或不同目录结构，则通过解析回调按请求键动态生成地址。相关类型定义见[请求对象](../../src/io/anabranch/Request.java)、[源描述](../../src/io/anabranch/Source.java)与[摘要契约](../../src/io/anabranch/Integrity.java)。
 
 ```java
-Downloader dl = Downloader.newBuilder().build();
+Downloader dl = Downloader.newBuilder()
+    .defaultChunks(8)
+    .maxConcurrent(4)
+    .build();
 SourceSet sources = new SourceSet(Arrays.asList(
-    Source.ofBase("a", "https://a.example.test/files/"),
-    Source.ofBase("b", "https://b.example.test/files/")),
+    Source.ofBase("mirror-a", "https://a.example.test/files/"),
+    Source.ofBase("mirror-b", "https://b.example.test/files/")),
     Policy.fastestFirst());
-Result result = dl.download(Request.of("file.bin", new File("file.bin")),
+Result result = dl.download(
+    Request.of("archive.tar.gz", new File("out/archive.tar.gz")),
     sources, Listener.NONE, Cancellation.NONE);
 ```
 
-该简写不提供摘要，不能证明混合源内容相同。需要内容保证时，用完整 `Request` 传入 `Integrity` 的逐块摘要及可选整份 SHA-256；摘要应由调用方信任的元数据提供。[请求类型](../../src/io/anabranch/Request.java)与[摘要类型](../../src/io/anabranch/Integrity.java)定义这一边界。
+注意简写工厂 `Request.of` 不会设置任何校验摘要，此时跨源切换无法证明两台服务器的文件字节一致；需要防篡改或跨源兜底时，应使用完整构造传入 `Integrity`。
 
-## Step 2: 探测源并判断能否复用进度
+## Step 2: 探测首条可用源并打开续传状态
 
-下载器依次找可用源，取得长度、ETag 和 Range 能力。`probeAll` 可提前查看所有源的探测结果；正常 `download` 使用先成功的源，不会自动证明所有镜像一致。
+进入[下载器主入口](../../src/io/anabranch/Downloader.java) 后，实现先调用 `SourceSet.resetDisabled()` 重置本轮运行期禁用标记，再依次调用 `Engine.probe` 查找第一条可用的镜像，取得总字节数、`ETag` 以及服务端是否支持 `Range` 分片。如果调用方希望提前排查镜像版本漂移，可先单独调用 `probeAll` 拿到 [探测汇总](../../src/io/anabranch/ProbeReport.java) 查看尺寸与标签是否一致，但正常 `download` 为减少等待仅以首条成功源为准。
 
-续传由 `.part` 保存数据、`.meta` 保存进度。长度、分块单位或同源 ETag 不匹配时丢弃旧状态；跨源不能拿另一台服务器的 ETag 比较，内容正确性仍需摘要支撑。服务端无 Range 时按整份单流处理，失败不保留不可复用的续传文件。见[下载准备阶段](../../src/io/anabranch/Downloader.java)与[续传状态](../../src/io/anabranch/ResumeState.java)。
+紧接着，[续传状态机](../../src/io/anabranch/ResumeState.java) 检查目标文件同目录下的伴生文件 `<target>.part` 与头部魔数为 `anabranch-meta/2` 的 `<target>.meta`。只有总长度与分块单位匹配，且（在同源续传时）`ETag` 相同时，才会复用原有分块标记；若已切换为另一条源，则仅比对总长和块大小，跳过跨站无意义的 `ETag` 比较。若旧状态不匹配或服务端不支持区间下载，状态机新建或重置 `.part`/`.meta`，并在后续非可续传下载失败时于 `catch` 块中主动清理这两份临时文件。
 
-## Step 3: 按策略取块并处理坏字节
+## Step 3: 并发派发分块、校验坏块与退避重试
 
-策略根据统计挑源，引擎只取指定字节区间。某块失败会记录源失败，并受尝试次数、失败时间预算和退避控制；正常慢传输不会仅因失败预算而中断。限速在写入侧共享，针对整次下载。
+当服务端支持区间读取时，任务按 `Integrity.chunkSize`（若提供逐块摘要）或 `Math.max(256 KiB, ceil(total / chunks))` 划出固定区间列表，交由线程池并发拉取。每块下载经过 [调度模块](../modules/scheduling-and-failover.md) 与 [续传校验模块](../modules/resume-and-integrity.md) 协同推进，各阶段交接如下：
 
-提供块摘要时，取到数据先记已下，再比较摘要；不匹配回退为待取并重试，通过才标记已验。这个顺序防止“HTTP 成功”直接进入已验证状态。[调度与校验](../../src/io/anabranch/Downloader.java)中的 `fetchOneChunk` 路径和[真实 HTTP 测试](../../test/SingleSourceTest.java)可对照。
+```text
+Pending ('P') chunk
+  ──▶ Policy.pick(candidates, stats, chunk)
+  ──▶ Engine.fetchRange(url, start, end, channel, speedListener, cancel)
+  ──▶ RateLimiter.acquire(...) + RandomAccess/FileChannel 落盘
+  ──▶ 标记 Downloaded ('D')
+  ──▶ (若含 chunkHash) SHA-256 校验:
+        ├─ 匹配 ─▶ 标记 Verified ('V'), SourceSet.recordSuccess(EMA α=0.3)
+        └─ 不符 ─▶ 回退 'P', Listener.onChunkVerifyFailed(...), 抛异常进退避/切源
+```
 
-| 场景 | 结果与剩余边界 |
-| --- | --- |
-| 少字节或坏块摘要 | 失败并重试/换源；不能作为校验通过 |
-| 提供整份摘要且最终不符 | 拒绝提交成品 |
-| 未提供摘要 | 可完成传输，但没有调用方内容期望的证明 |
-| 无 Range 且中断 | 不能续传，后续需重新整份下载 |
+任何一步失败都会累加该块失败耗时，在[调度器](../../src/io/anabranch/Downloader.java) 中受最多 `6` 次尝试、`chunkRetryBudgetMs`（默认 `60_000` ms，只计失败尝试与退避等待）以及上限 `2000` ms 指数退避制约；默认策略在第 1 次失败原地重试，第 2 次切换至备源，对某条源连续失败满 3 次则在本次下载期间将其禁用。整次下载的写入速率由全局共享的[令牌桶限速器](../../src/io/anabranch/RateLimiter.java) 控制。
 
-## Step 4: 完成所有块后提交成品
+## Step 4: 全量核验与替换提交成品
 
-下载器先把文件通道落盘，再检查完整状态和可选整份摘要，随后替换目标并清除续传记录。当前实现先删除旧目标，再调用 `renameTo`；重命名失败会抛错，不能宣传为所有文件系统上的原子替换或完整断电事务。[提交实现](../../src/io/anabranch/Downloader.java)中的 `commit` 是最终结果边界。
+当全部块都达到完成要求后，提交阶段 `commit` 按固定顺序完成最终确认：首先对 `.part` 通道调用 `force(true)` 将脏页刷盘，再次检查全部块均已完成，并在存在 `wholeSha256` 时重算整份文件摘要；若整份摘要不匹配则直接抛出异常并保留隔离状态，绝不替换成品。确认无误后删除旧目标文件（若存在）、调用 `part.renameTo(target)` 改名落位、同步父目录句柄并清理 `.meta`，最后回调 `Listener.onProgress(total, total)`。
 
-独立 aria2 下载器共享请求类型，但当前不实现 `Engine`，也不进入 core JAR。更换核心引擎仍须遵守引擎不得反向依赖调度层的约束。
+| 异常场景 | 处理分支与结果 | 对调用方可见的边界 |
+| --- | --- | --- |
+| 某块返回少字节或非零偏移请求却返 HTTP `200` | `HttpEngine` 立即抛 `IOException`，绝不推进分块状态 | 触发重试或切源；不会静默写入偏移错误的数据 |
+| 第 `k` 块 SHA-256 核对失败 | 状态回退为 `'P'` 并触发 `onChunkVerifyFailed` | 坏块不会被保留为已完成，必须重下通过后方可提交 |
+| 服务端不支持 `Range` 且传输中断 | 降级为整份单流后在异常分支删除 `.part`/`.meta` | 下次调用必须重新从头下载 |
+| 所有镜像均已损坏或超过失败预算 | 抛出包含所有源报错详情或预算超限说明的异常 | 保留可续传 `.part`/`.meta` 以便排查恢复；成品未生成 |
 
-## Step 5: 用真实本机 HTTP 验证
+## Step 5: 使用本机真实 HTTP 回路验证
 
 ```sh
 sh tools/run-checks.sh
 ```
 
-脚本编译 core/aria2 Java 部分，执行边界检查和四个测试主类。[单源测试](../../test/SingleSourceTest.java)覆盖半截传输、摘要和续传，[多源测试](../../test/MultiSourceTest.java)检查切源，[限速测试](../../test/ThrottleTest.java)检查整体速率。它们使用真实本机服务，不能替换成全 mock 后仍宣称相同覆盖。本轮未运行这些业务测试，未验证 Android 或 native 环境。
-
-需要修改这条路径时，用[代码地图寻找责任与测试](../code-map.md)；要审查讲解的依据，查看[源码调查和边界](../references/source-evidence.md)。
+[检查脚本](../../tools/run-checks.sh) 不依赖 mock，直接以 JDK 标准库启动本地 HTTP 测试服务器执行[单源测试](../../test/SingleSourceTest.java)、[多源测试](../../test/MultiSourceTest.java)、[限速测试](../../test/ThrottleTest.java) 与 [原生故障切换测试](../../aria2/test/Aria2FailoverTest.java)。关于各目录下文件与独立 `aria2` 后端的详细职责索引，请继续查阅[代码地图](../code-map.md) 与 [源码证据审计](../references/source-evidence.md)。
 
 证据状态：除特别标注外，本页基于当前源码已确认。

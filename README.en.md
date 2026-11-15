@@ -1,143 +1,82 @@
-# Anabranch · Multi-source chunked downloads
+# Anabranch Core
 
-> 中文版（主文档）：[README.md](README.md)
->
-> **anabranch**: a stretch of river that splits off the main channel and rejoins it
-> downstream. Data flows in several strands over different routes and merges back
-> into one file — the name is literal, not a metaphor.
+[简体中文](README.md) · [English](README.en.md) · [Documentation Site](https://cybernova2333.github.io/anabranch-core/en/) · [AGPL-3.0-only](LICENSE)
 
-One file, N mirrors, scheduled per chunk: which source serves a given chunk is
-decided at runtime from measured throughput; when a source fails, only that chunk
-is re-fetched from another source; every chunk can be verified against a digest.
+![Java 8+](https://img.shields.io/badge/Java-8%2B-orange) ![Android minSdk 21](https://img.shields.io/badge/Android-minSdk%2021-green) ![Zero Core Deps](https://img.shields.io/badge/Core%20Dependencies-0-blue)
 
-Pure Java, zero third-party dependencies, and the core never touches Android —
-which is why the full test suite runs on a desktop JVM.
+Zero-dependency multi-source segmented download library for **Java 8 and Android (`minSdk 21`)**: splits one file into byte ranges across mirrors with throughput-aware selection, per-chunk failover, cross-source resume, and SHA-256 verification, paired with an optional standalone `aria2` JNI backend (`anabranch-aria2`).
 
-## Why another download library
+## Core Capabilities & Flow
 
-| Implemented core capability | Current boundary |
-| --- | --- |
-| Concurrent chunks from multiple sources | Caller supplies a source set; availability does not prove identical content |
-| Per-chunk failover | Retry policy and failure budget govern the next attempt |
-| Throughput-based source selection | Policy reads measured statistics |
-| Optional chunk/whole-file verification | Caller supplies trusted digests |
-| Pluggable Engine | The independent aria2 downloader currently uses a separate entry point |
+- **Multi-Mirror Chunk Scheduling**: Dispatches byte intervals across identical mirrors via `SourceSet` using `Policy.fastestFirst()` (EMA throughput vs. in-flight concurrency) or `Policy.weighted()`.
+- **Bounded Failover & Circuit Breaking**: Caps retries at 6 attempts per chunk and 2000ms exponential backoff; `chunkRetryBudgetMs` (default `60_000` ms) counts only failures rather than healthy slow transfers, disabling a source for the current download after 3 consecutive errors.
+- **Resumable `.meta` v2 & Digest Guard**: Persists `P/D/V` chunk states across `<target>.part` and `anabranch-meta/2` (`.meta`), validates `ETag` on same-source resumes, and checks per-chunk and whole-file SHA-256 digests before target rename.
+- **Java 8 & Artifact Isolation**: Core comprises 19 plain Java 8 files with zero third-party deps and zero `android.*` imports; optional `aria2` native binaries ship in a separate AAR.
 
-The differentiator is one word: **multi-source**. Multi-threaded chunking is a
-mature category; this library exists for "one file, N routes, per-chunk
-scheduling".
-
-## Coordinates
-
-Planned for Maven Central (not yet published):
-
-```
-io.github.cybernova2333:anabranch-core:0.1.0
+```mermaid
+flowchart LR
+    Req["Request + SourceSet"] --> Probe["Engine.probe + Resume (.meta v2)"]
+    Probe --> Pick["Policy.pick + Engine.fetchRange"]
+    Pick --> Write["RateLimiter + Write .part"]
+    Write --> Verify{"Integrity SHA-256 Verify"}
+    Verify -- Verified & Complete --> Commit["force + wholeSha256 + renameTo"]
+    Verify -- Timeout / Mismatch --> Retry["Backoff Budget / Switch / Disable"]
+    Retry --> Pick
 ```
 
-Requires Java 8+ bytecode support; on Android, minSdk 21. No runtime library
-from API 24+ is used (no `java.util.function`, `stream`, `Optional`,
-`nio.file`, `time`), so no core-library desugaring is required.
+## Quick Start & Integration Modes
 
-## Quick look
-
-```java
-Downloader dl = Downloader.newBuilder().build();
-
-SourceSet mirrors = new SourceSet(Arrays.asList(
-        Source.ofBase("cdn",    "https://cdn.example.com/files/"),
-        Source.ofBase("mirror", "https://mirror.example.org/files/")),
-        Policy.fastestFirst());
-
-Result r = dl.download(
-        Request.of("app-data.zip", new File(dir, "app-data.zip")),
-        mirrors,
-        Listener.NONE,
-        Cancellation.NONE);
-```
-
-- `Source.Resolver` maps a logical key to a URL per source, so mirrors with
-  different paths, signed URLs, or token-carrying CDNs all work.
-- `Integrity` carries an optional whole-file SHA-256 and optional per-chunk
-  digests. Per-chunk digests are what make failover safe: without them there is
-  no way to prove that a file assembled from several sources is correct.
-- `Downloader.probeAll()` checks that all mirrors agree on size before you spend
-  a whole download finding out that one of them still serves an old version.
-
-## Design in one diagram
-
-```
-Downloader   (chunking / concurrency / retry loop / verification / commit)
-    ├── Policy + Stats   (who serves the next chunk; what happens on failure)
-    └── Engine           (fetches exactly one byte range; nothing else)
-```
-
-- **Engine implementations must not reference the scheduling layer.** This
-  boundary is what makes native backends (e.g. aria2) possible without
-  replacing the retry/failover logic.
-- **Policy reads Stats and never does IO**, so scheduling rules are unit-tested
-  against fake stats instead of racing real servers.
-
-## What the tests actually cover
-
-All three suites start real local HTTP servers (`com.sun.net.httpserver`) and
-transfer real bytes — the failure modes this library defends against (a server
-sending fewer bytes than promised, mirrors serving different versions, a
-connection that accepts and then goes silent) simply do not happen in mocks.
-The multi-source suite runs three mirrors that can be switched at any moment to
-"dead / slow / fail after N ranges / stall without sending a byte".
-
-Highlights, each guarding a silent-corruption path:
-
-- a mid-transfer disconnect throws instead of "succeeding" with half a chunk;
-- resume state survives failures, including **resuming across sources** — etags
-  legitimately differ between mirrors, so the etag is only compared against the
-  source that produced it (correctness is backed by per-chunk digests);
-- a chunk that fails verification is re-fetched, never committed;
-- a stalled source is bounded by a **time budget** (`chunkRetryBudgetMs`), not
-  just an attempt cap — a cap alone multiplies the read-timeout cost;
-- retries back off exponentially instead of hammering a struggling server;
-- rate limiting (`bytesPerSecond`) applies to the whole download, not per chunk,
-  and is enforced on the write side so it works with any `Engine`.
-
-## Documentation
-
-Most documentation is in Chinese — [README.md](README.md) is the primary and
-more detailed version of this file; [docs/DESIGN.md](docs/DESIGN.md) holds the
-full design; [CONTRIBUTING.md](CONTRIBUTING.md) covers development workflow.
-
-Development needs no build system:
-
-```bash
-sh tools/run-checks.sh    # compile + core boundary checks + 77 tests, ~1 minute
-```
-
-Gradle supports packaging and publishing (see
-[docs/RELEASING.md](docs/RELEASING.md)) and wires the three core suites into `check`.
-The direct script additionally runs the independent aria2 file-IO failover suite.
-
-## License
-
-Apache-2.0. The `anabranch-aria2` backend is a **separate artifact**:
-aria2 is GPLv2+, and statically linking it creates source-provision obligations
-that pure-Java users should not inherit.
-
-## Current backend and verification boundary
-
-The independent aria2 downloader shares request types but currently does not implement `Engine` and is not included in the core JAR. Native host tests and Android device acceptance are separate checks. Preparing JDK 17 or 21, Python 3 and a POSIX shell matches the current direct-check workflow; Gradle is needed for packaging, not the first correctness check.
-
-`Request.of` supplies no integrity metadata. Chunk or whole-file digest checks only run when the caller supplies the corresponding trusted digests; transport completion alone does not prove mirror content equality. The final Java commit removes the previous target before `renameTo`, so do not describe replacement as a universal atomic transaction.
-
-The commands and tests were inspected during this documentation sync; no application or native tests were run.
-
-## Documentation site
-
-The [Chinese source guide](repo-docs/README.md) follows one implemented workflow, then links to a code map and evidence audit. It does not claim complete architecture coverage.
+Daily verification needs only a JDK supporting `--release 8` and Python 3 (no Gradle wrapper bundled); the shortest local test & Java call path is:
 
 ```sh
-pnpm --dir docs-site install --frozen-lockfile
-pnpm --dir docs-site run docs:dev -- --host 127.0.0.1
-pnpm --dir docs-site run docs:build
+git clone https://github.com/CyberNova2333/anabranch-core.git
+cd anabranch-core
+sh tools/run-checks.sh          # Java 8 compile + boundary guard + loopback HTTP suites
+# sh aria2/native/run-host-tests.sh   # Optional: build host libaria2 .so & run 28 download tests
 ```
 
-The documentation site uses the default VitePress theme, with dependencies installed separately from the application. Output defaults to `docs-site/.vitepress/dist/`; append `-- --outDir <external-absolute-directory>` for an isolated build. Markdown remains in `repo-docs/` and is included by the site. Repository source links are shown as exact paths; source files and local resources are not published.
+Minimal Java call (`dl.probeAll(key, set, cancel)` can preflight mirror agreement first):
+
+```java
+Downloader dl = Downloader.newBuilder().defaultChunks(8).maxConcurrent(4).build();
+SourceSet set = new SourceSet(Arrays.asList(
+    Source.ofBase("cdn-a", "https://cdn-a.example.test/files/"),
+    Source.ofBase("cdn-b", "https://cdn-b.example.test/files/")),
+    Policy.fastestFirst());
+Result res = dl.download(Request.of("pkg.bin", new File("out/pkg.bin")), set, Listener.NONE, Cancellation.NONE);
+```
+
+| Mode / Platform | Scope & Preconditions | Documentation Link |
+| --- | --- | --- |
+| **Pure Java 8 / JVM Core** | Zero deps, default `HttpEngine`; Maven coordinate `io.github.cybernova2333:anabranch-core:0.1.0` | [1. Overview & Quick Start](docs-site/en/docs/index.md) |
+| **Android (`minSdk 21`)** | Verified via `javac --release 8` and boundary scans; no desugaring required; needs `INTERNET` | [Integration & Troubleshooting](docs-site/en/docs/deployment.md) |
+| **Optional `aria2` JNI Backend** | Separate `anabranch-aria2` AAR with single-thread `runOnce` and TLS dead-man's switch | [aria2 Design](docs/ARIA2.md) · [Build & Setup](docs-site/en/docs/deployment.md) |
+| **Custom `Engine` / `Policy`** | Plug in OkHttp or custom selection rules while preserving unidirectional core boundaries | [2. API & Extension Contracts](docs-site/en/docs/contracts.md) |
+
+## Pre-Adoption FAQ
+
+**1. Why choose Anabranch Core over Android `DownloadManager` or single-URL chunked libraries?**
+Typical libraries open parallel connections to one URL; Anabranch Core orchestrates one logical file across multiple mirrors with adaptive speed scoring, per-chunk failover, and SHA-256 verification.
+
+**2. Does Android `minSdk 21` require core library desugaring?**
+No. Both `src/io/anabranch/` and `aria2/` Java layers compile strictly with `javac --release 8` and forbid API 24+/26+ runtime classes and `android.*` imports.
+
+**3. Is `io.github.cybernova2333:anabranch-core:0.1.0` already live on Maven Central?**
+Coordinates, GPG signing hooks, and `centralBundle` packaging live in `build.gradle.kts`, while publishing is a manual step documented in `docs/RELEASING.md`; confirm Central availability or build from `src/`.
+
+**4. Why is the optional `aria2` backend packaged separately from `anabranch-core`?**
+Upstream `libaria2` is GPLv2+, imposing `GPL-3.0-or-later` source-distribution obligations on compiled AARs; isolating `aria2/` keeps `anabranch-core` zero-weight and strictly `Apache-2.0`.
+
+## Reading Paths
+
+| Goal | Documentation Site | Repository Reference |
+| --- | --- | --- |
+| Evaluate & integrate quickly | [1. Getting Started & Deployment](docs-site/en/docs/index.md) | [Configuration & Troubleshooting](docs-site/en/docs/deployment.md) |
+| Extend `Engine`, `Policy`, or `Resolver` | [2. API & Extension Contracts](docs-site/en/docs/contracts.md) | [Scheduling, Resume & Integrity](docs-site/en/docs/mechanisms.md) |
+| Trace source code & locate files | [3. Architecture & Source Guide](docs-site/en/docs/architecture.md) | [Source Guide (`repo-docs`)](repo-docs/README.md) · [Code Map](docs-site/en/docs/code-map.md) |
+| Inspect design history & releasing | [Design Decisions & Releasing](docs-site/en/docs/decisions.md) | [Maven Central Release Guide](docs/RELEASING.md) · [Contributing](CONTRIBUTING.md) |
+
+## License & Scope Boundary
+
+- **Licensing**: `anabranch-core` and Java glue under `aria2/src/` use [AGPL-3.0-only](LICENSE); compiled `anabranch-aria2` binary AAR distributions are licensed under **GPL-3.0-or-later** per [`aria2/THIRD-PARTY-NOTICES.md`](aria2/THIRD-PARTY-NOTICES.md).
+- **Stateless boundary**: Designed clean-room without hard-coded URLs, persisted preferences, archive extraction/APK installation, or UI/foreground services; mirror equivalence is backed by caller-supplied `Integrity` digests.
