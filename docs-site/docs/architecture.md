@@ -23,9 +23,12 @@ Anabranch Core 采用严格的单向分层架构：上层编排与状态持久�
 
 下面嵌入仓库既有交互页面 [`/diagrams/anabranch-architecture.html`](/diagrams/anabranch-architecture.html)（随站保留的静态预览资产）。**请注意甄别**：该图实际描绘的是仓储运维辅助脚本（多远端镜像同步）而非上述 Java 下载库本身；要理解 Java 下载核心的真实结构与一次运行链路，请以上方分层图及下方《一次真实运行》源码走读为准。
 
-<div style="margin: 16px 0; border: 1px solid var(--vp-c-divider); border-radius: 12px; overflow: hidden;">
-  <iframe src="/diagrams/anabranch-architecture.html" style="width: 100%; height: 520px; border: 0;" title="仓库保留历史交互架构图"></iframe>
-</div>
+<DiagramFrame
+  src="/diagrams/anabranch-architecture.html"
+  title="仓库保留历史交互架构图"
+  aspect="710 / 448"
+  new-tab-label="在新窗口全屏打开 ↗"
+/>
 
 ## 一次真实运行全流程（同步自 `repo-docs/`）
 

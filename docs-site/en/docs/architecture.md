@@ -19,9 +19,12 @@ Anabranch Core maintains strict unidirectional layering: coordination and state 
 
 Below is the preserved interactive static page [`/diagrams/anabranch-architecture.html`](/diagrams/anabranch-architecture.html). **Note**: that legacy diagram depicts repository multi-remote sync helpers rather than the Java multi-source chunked downloader itself. Refer to the architecture diagram above and the step-by-step trace below for the actual download library implementation.
 
-<div style="margin: 16px 0; border: 1px solid var(--vp-c-divider); border-radius: 12px; overflow: hidden;">
-  <iframe src="/diagrams/anabranch-architecture.html" style="width: 100%; height: 520px; border: 0;" title="Preserved Legacy Static Diagram"></iframe>
-</div>
+<DiagramFrame
+  src="/diagrams/anabranch-architecture.html"
+  title="Preserved Legacy Static Diagram"
+  aspect="710 / 448"
+  new-tab-label="Open Fullscreen ↗"
+/>
 
 ## One Real Run Walkthrough
 
