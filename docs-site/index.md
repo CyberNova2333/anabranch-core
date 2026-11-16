@@ -10,6 +10,9 @@ hero:
       text: 起步与集成
       link: /docs/
     - theme: alt
+      text: 公开 API 与契约
+      link: /docs/contracts
+    - theme: alt
       text: 架构与源码导览
       link: /docs/architecture
     - theme: alt
@@ -27,15 +30,19 @@ features:
     details: 核心仅 19 个源文件且严格通过 javac --release 8 与边界检查；可选原生 aria2 后端独立为 GPL-3.0-or-later AAR，互不牵连。
 ---
 
-## 按身份 / 目标快速入口
+## 架构全景
 
-| 你的身份与目标 | 推荐入口 | 解决什么问题 |
-| --- | --- | --- |
-| **应用开发者（JVM / Android）** | [定位、双产物与快速开始](/docs/) | 区分 `anabranch-core` 与 `anabranch-aria2`，跑通最小依赖与 `tools/run-checks.sh` |
-| **构建与运维集成者** | [集成配置、原生构建与排错](/docs/deployment) | 核对参数默认值、Android `minSdk 21` 无 desugaring 约束、aria2 `.so` 构建与常见错误 |
-| **扩展引擎与策略定制者** | [公开 API 与扩展契约](/docs/contracts) | 实现自定义 `Engine`（如 OkHttp）、`Policy`、`Source.Resolver` 或评估 `Aria2Downloader` 语义差异 |
-| **深入核心协议细节** | [调度熔断、续传与校验机制](/docs/mechanisms) | 查看 EMA 公式、`.meta` v2 格式、先 `force` 后 `renameTo` 顺序与 dead-man's switch |
-| **源码贡献与架构评审者** | [架构全景与一次真实运行](/docs/architecture) · [源码地图](/docs/code-map) | 跟踪端到端调用链路、定位 19 个核心类与 5 套测试，查看 [设计决策与发布迁移](/docs/decisions) |
+<div class="archify-diagram-card" style="margin: 1.5rem 0; border: 1px solid var(--vp-c-border); border-radius: 12px; overflow: hidden; background: var(--vp-c-bg-soft); box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; background: var(--vp-c-bg-elv); border-bottom: 1px solid var(--vp-c-border); font-size: 13px;">
+    <span style="font-weight: 600; color: var(--vp-c-text-1); display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 16px;">📐</span> 多源分块调度与状态持久化架构（基于 Archify 的交互式拓扑，支持平移/缩放/探查）
+    </span>
+    <a href="/diagrams/anabranch-architecture.html" target="_blank" rel="noreferrer" style="font-size: 12px; color: var(--vp-c-brand-1); text-decoration: none; font-weight: 500;">
+      在新窗口全屏打开 ↗
+    </a>
+  </div>
+  <iframe src="/diagrams/anabranch-architecture.html" width="100%" height="520px" frameborder="0" style="display: block; border: none;" allowfullscreen loading="lazy"></iframe>
+</div>
 
 ## 最小调用示例
 
@@ -55,3 +62,12 @@ Result res = dl.download(
     new Request("app.bin", new File("out/app.bin"), integrity, 8, true),
     sources, Listener.NONE, Cancellation.NONE);
 ```
+
+## 文档分层导航
+
+::: tip 按照读者需求快速跳转
+- **应用开发者（JVM / Android）**：阅读 [定位、双产物与快速开始](/docs/)，区分 `anabranch-core` 与 `anabranch-aria2`，跑通最小依赖与 `tools/run-checks.sh`；
+- **构建与运维集成者**：查阅 [集成配置、原生构建与排错](/docs/deployment)，核对参数默认值、Android `minSdk 21` 无 desugaring 约束、aria2 `.so` 构建与常见错误；
+- **扩展引擎与策略定制者**：查阅 [公开 API 与扩展契约](/docs/contracts) 与 [调度熔断、续传与校验机制](/docs/mechanisms)，实现自定义 `Engine`（如 OkHttp）、`Policy`、`Source.Resolver`；
+- **源码贡献与架构评审者**：查阅 [架构全景与一次真实运行](/docs/architecture)、[源码地图与目录索引](/docs/code-map) 与 [设计决策、演进与发布迁移](/docs/decisions)。
+:::

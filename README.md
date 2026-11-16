@@ -48,10 +48,10 @@ Result res = dl.download(Request.of("pkg.bin", new File("out/pkg.bin")), set, Li
 
 | 接入模式 / 目标平台 | 定位与前置约束 | 详细说明入口 |
 | --- | --- | --- |
-| **纯 Java 8 / JVM 核心库** | 零第三方依赖，`HttpEngine` 开箱即用；预定 Maven 坐标 `io.github.cybernova2333:anabranch-core:0.1.0` | [1. 起步与双产物概览](docs-site/docs/index.md) |
+| **纯 Java 8 / JVM 核心库** | 零第三方依赖，`HttpEngine` 开箱即用；预定 Maven 坐标 `io.github.cybernova2333:anabranch-core:0.1.0` | [起步与双产物概览](docs-site/docs/index.md) |
 | **Android (`minSdk 21`) 接入** | 通过 `--release 8` 与边界扫描，无需开启 Core Library Desugaring；需 `INTERNET` 权限 | [集成配置、权限与排错](docs-site/docs/deployment.md) |
 | **可选 `aria2` JNI 后端** | 独立 `anabranch-aria2` AAR；libaria2 单线程 `runOnce` 驱动 + 双 TLS 后端 dead-man's switch | [aria2 设计说明](docs/ARIA2.md) · [原生构建](docs-site/docs/deployment.md) |
-| **自定义 `Engine` / `Policy`** | 支持替换 OkHttp 等传输栈或实现自定义选路/熔断策略，严守向内单向依赖边界 | [2. 公开 API 与扩展契约](docs-site/docs/contracts.md) |
+| **自定义 `Engine` / `Policy`** | 支持替换 OkHttp 等传输栈或实现自定义选路/熔断策略，严守向内单向依赖边界 | [公开 API 与扩展契约](docs-site/docs/contracts.md) |
 
 ## 选型前常见问题
 
@@ -71,9 +71,9 @@ Result res = dl.download(Request.of("pkg.bin", new File("out/pkg.bin")), set, Li
 
 | 读者目标 | 文档站入口 | 仓库直链参考 |
 | --- | --- | --- |
-| 了解双产物定位与快速接入 | [1. 起步与集成部署](docs-site/docs/index.md) | [配置参数与原生构建](docs-site/docs/deployment.md) |
-| 扩展 `Engine`、`Policy` 与了解差异 | [2. 公开 API 与扩展契约](docs-site/docs/contracts.md) | [调度、`.meta` v2 续传与校验](docs-site/docs/mechanisms.md) |
-| 走读源码与定位修改文件 | [3. 架构全景与一次真实运行](docs-site/docs/architecture.md) | [源码指南 (`repo-docs`)](repo-docs/README.md) · [代码地图](repo-docs/code-map.md) |
+| 了解双产物定位与快速接入 | [起步与集成部署](docs-site/docs/index.md) | [配置参数与原生构建](docs-site/docs/deployment.md) |
+| 扩展 `Engine`、`Policy` 与了解差异 | [公开 API 与扩展契约](docs-site/docs/contracts.md) | [调度、`.meta` v2 续传与校验](docs-site/docs/mechanisms.md) |
+| 走读源码与定位修改文件 | [架构全景与一次真实运行](docs-site/docs/architecture.md) | [源码指南 (`repo-docs`)](repo-docs/README.md) · [代码地图](repo-docs/code-map.md) |
 | 审计设计演化与发版手续 | [设计决策、演进与发布迁移](docs-site/docs/decisions.md) | [Maven Central 发布手册](docs/RELEASING.md) · [贡献指南](CONTRIBUTING.md) |
 
 ## 许可与独立边界

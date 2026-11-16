@@ -48,10 +48,10 @@ Result res = dl.download(Request.of("pkg.bin", new File("out/pkg.bin")), set, Li
 
 | Mode / Platform | Scope & Preconditions | Documentation Link |
 | --- | --- | --- |
-| **Pure Java 8 / JVM Core** | Zero deps, default `HttpEngine`; Maven coordinate `io.github.cybernova2333:anabranch-core:0.1.0` | [1. Overview & Quick Start](docs-site/en/docs/index.md) |
+| **Pure Java 8 / JVM Core** | Zero deps, default `HttpEngine`; Maven coordinate `io.github.cybernova2333:anabranch-core:0.1.0` | [Overview & Quick Start](docs-site/en/docs/index.md) |
 | **Android (`minSdk 21`)** | Verified via `javac --release 8` and boundary scans; no desugaring required; needs `INTERNET` | [Integration & Troubleshooting](docs-site/en/docs/deployment.md) |
 | **Optional `aria2` JNI Backend** | Separate `anabranch-aria2` AAR with single-thread `runOnce` and TLS dead-man's switch | [aria2 Design](docs/ARIA2.md) · [Build & Setup](docs-site/en/docs/deployment.md) |
-| **Custom `Engine` / `Policy`** | Plug in OkHttp or custom selection rules while preserving unidirectional core boundaries | [2. API & Extension Contracts](docs-site/en/docs/contracts.md) |
+| **Custom `Engine` / `Policy`** | Plug in OkHttp or custom selection rules while preserving unidirectional core boundaries | [API & Extension Contracts](docs-site/en/docs/contracts.md) |
 
 ## Pre-Adoption FAQ
 
@@ -71,9 +71,9 @@ Upstream `libaria2` is GPLv2+, imposing `GPL-3.0-or-later` source-distribution o
 
 | Goal | Documentation Site | Repository Reference |
 | --- | --- | --- |
-| Evaluate & integrate quickly | [1. Getting Started & Deployment](docs-site/en/docs/index.md) | [Configuration & Troubleshooting](docs-site/en/docs/deployment.md) |
-| Extend `Engine`, `Policy`, or `Resolver` | [2. API & Extension Contracts](docs-site/en/docs/contracts.md) | [Scheduling, Resume & Integrity](docs-site/en/docs/mechanisms.md) |
-| Trace source code & locate files | [3. Architecture & Source Guide](docs-site/en/docs/architecture.md) | [Source Guide (`repo-docs`)](repo-docs/README.md) · [Code Map](docs-site/en/docs/code-map.md) |
+| Evaluate & integrate quickly | [Getting Started & Deployment](docs-site/en/docs/index.md) | [Configuration & Troubleshooting](docs-site/en/docs/deployment.md) |
+| Extend `Engine`, `Policy`, or `Resolver` | [API & Extension Contracts](docs-site/en/docs/contracts.md) | [Scheduling, Resume & Integrity](docs-site/en/docs/mechanisms.md) |
+| Trace source code & locate files | [Architecture & Source Guide](docs-site/en/docs/architecture.md) | [Source Guide (`repo-docs`)](repo-docs/README.md) · [Code Map](docs-site/en/docs/code-map.md) |
 | Inspect design history & releasing | [Design Decisions & Releasing](docs-site/en/docs/decisions.md) | [Maven Central Release Guide](docs/RELEASING.md) · [Contributing](CONTRIBUTING.md) |
 
 ## License & Scope Boundary

@@ -31,28 +31,28 @@ export default defineConfig({
         siteTitle: 'Anabranch Core',
         nav: [
           { text: '首页', link: '/' },
-          { text: '1. 起步与集成', link: '/docs/' },
-          { text: '2. 契约与机制', link: '/docs/contracts' },
-          { text: '3. 原理与导览', link: '/docs/architecture' },
+          { text: '起步与集成', link: '/docs/' },
+          { text: '契约与机制', link: '/docs/contracts' },
+          { text: '原理与导览', link: '/docs/architecture' },
           { text: 'GitHub', link: 'https://github.com/CyberNova2333/anabranch-core' },
         ],
         sidebar: [
           {
-            text: '1. 起步与集成部署',
+            text: '起步与集成部署',
             items: [
               { text: '定位、双产物与快速开始', link: '/docs/' },
               { text: '集成配置、原生构建与排错', link: '/docs/deployment' },
             ],
           },
           {
-            text: '2. 接口与扩展契约',
+            text: '接口与扩展契约',
             items: [
               { text: '公开 API 与扩展契约', link: '/docs/contracts' },
               { text: '调度熔断、续传与校验机制', link: '/docs/mechanisms' },
             ],
           },
           {
-            text: '3. 原理与源码导览',
+            text: '原理与源码导览',
             items: [
               { text: '架构全景与一次真实运行', link: '/docs/architecture' },
               { text: '源码地图与目录索引', link: '/docs/code-map' },
@@ -74,28 +74,28 @@ export default defineConfig({
         siteTitle: 'Anabranch Core',
         nav: [
           { text: 'Home', link: '/en/' },
-          { text: '1. Getting Started', link: '/en/docs/' },
-          { text: '2. Contracts & Mechanisms', link: '/en/docs/contracts' },
-          { text: '3. Architecture & Source', link: '/en/docs/architecture' },
+          { text: 'Getting Started', link: '/en/docs/' },
+          { text: 'Contracts & Mechanisms', link: '/en/docs/contracts' },
+          { text: 'Architecture & Source', link: '/en/docs/architecture' },
           { text: 'GitHub', link: 'https://github.com/CyberNova2333/anabranch-core' },
         ],
         sidebar: [
           {
-            text: '1. Getting Started & Deployment',
+            text: 'Getting Started & Deployment',
             items: [
               { text: 'Overview & Quick Start', link: '/en/docs/' },
               { text: 'Integration, aria2 Build & FAQ', link: '/en/docs/deployment' },
             ],
           },
           {
-            text: '2. API & Extension Contracts',
+            text: 'API & Extension Contracts',
             items: [
               { text: 'Public API & Extension Points', link: '/en/docs/contracts' },
               { text: 'Scheduling, Resume & Integrity', link: '/en/docs/mechanisms' },
             ],
           },
           {
-            text: '3. Architecture & Source Guide',
+            text: 'Architecture & Source Guide',
             items: [
               { text: 'Architecture & One Real Run', link: '/en/docs/architecture' },
               { text: 'Code Map & Directory Index', link: '/en/docs/code-map' },
