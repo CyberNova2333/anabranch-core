@@ -33,8 +33,11 @@ export default defineConfig({
           { text: '首页', link: '/' },
           { text: '起步与集成', link: '/docs/' },
           { text: '契约与机制', link: '/docs/contracts' },
+          { text: 'API 与组件', link: '/api-reference/' },
           { text: '原理与导览', link: '/docs/architecture' },
-          { text: 'GitHub', link: 'https://github.com/CyberNova2333/anabranch-core' },
+        ],
+        socialLinks: [
+          { icon: 'github', link: 'https://github.com/CyberNova2333/anabranch-core' },
         ],
         sidebar: [
           {
@@ -48,6 +51,7 @@ export default defineConfig({
             text: '接口与扩展契约',
             items: [
               { text: '公开 API 与扩展契约', link: '/docs/contracts' },
+              { text: 'API 与组件参考', link: '/api-reference/' },
               { text: '调度熔断、续传与校验机制', link: '/docs/mechanisms' },
             ],
           },
@@ -75,9 +79,12 @@ export default defineConfig({
         nav: [
           { text: 'Home', link: '/en/' },
           { text: 'Getting Started', link: '/en/docs/' },
-          { text: 'Contracts & Mechanisms', link: '/en/docs/contracts' },
-          { text: 'Architecture & Source', link: '/en/docs/architecture' },
-          { text: 'GitHub', link: 'https://github.com/CyberNova2333/anabranch-core' },
+          { text: 'Contracts', link: '/en/docs/contracts' },
+          { text: 'API & SPI', link: '/en/api-reference/' },
+          { text: 'Architecture', link: '/en/docs/architecture' },
+        ],
+        socialLinks: [
+          { icon: 'github', link: 'https://github.com/CyberNova2333/anabranch-core' },
         ],
         sidebar: [
           {
@@ -91,6 +98,7 @@ export default defineConfig({
             text: 'API & Extension Contracts',
             items: [
               { text: 'Public API & Extension Points', link: '/en/docs/contracts' },
+              { text: 'API & Component Reference', link: '/en/api-reference/' },
               { text: 'Scheduling, Resume & Integrity', link: '/en/docs/mechanisms' },
             ],
           },

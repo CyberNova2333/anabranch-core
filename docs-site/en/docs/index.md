@@ -22,6 +22,13 @@ To protect pure-Java integrators from native binary bloat and GPL linking obliga
 | `io.github.cybernova2333:anabranch-aria2:0.1.0` (optional) | `io.anabranch.aria2.*` | Java glue + JNI `libaria2` `.so` | Depends on core; combined binary AAR is `GPL-3.0-or-later` |
 
 > **Release status**: Coordinates and signing/bundling tasks exist in `build.gradle.kts`, while Maven Central publication is manual via `docs/RELEASING.md` and not yet live by default. Verify availability on Central or compile `src/` directly.
+>
+> ## Capabilities & Explicit Non-Goals
+>
+> - **What Anabranch Core Delivers**: Pure Java 8 (19 AGPL-3.0-only files, Android `minSdk 21` clean without desugaring) multi-mirror segmented transfer, failure-only retry budgets (`60s`), `.part` + `anabranch-meta/2` resume, SHA-256 verification, pluggable `Engine`/`Policy`/`Source.Resolver`, and an isolated GPL `anabranch-aria2` AAR.
+> - **Explicit Non-Goals & Limits**: Strictly stateless library—never bundles mirror URLs, saved config, archive extraction, APK installers, UI, or foreground services; `Source.maxChunks` is metadata-only today; `Aria2Downloader` serializes globally under `BUSY` and verifies `.a2part` post-download.
+>
+> **Interactive Reference**: Browse every public Java class, extension SPI, and runnable snippet in the [API & Component Reference](/en/api-reference/).
 
 ## One-Minute Local Verification (No Gradle Required)
 

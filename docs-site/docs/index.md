@@ -22,6 +22,13 @@ Anabranch Core 解决的是单文件、多镜像并发下载与可信校验问�
 | `io.github.cybernova2333:anabranch-aria2:0.1.0`（可选） | `io.anabranch.aria2.*` | Java 胶水 + JNI `libaria2` `.so` | 依赖同版本 core；二进制 AAR 按 `GPL-3.0-or-later` 分发 |
 
 > **发布状态提醒**：`build.gradle.kts` 已声明上述坐标与签名打包任务，但制品**尚未自动推至 Maven Central**（发布为手动动作）。集成前请先核对 Central 上是否已有目标版本；如从源码直连，可直接引用 `src/io/anabranch/` 或在本地执行 `gradle centralBundle` 检验构建产物。
+>
+> ## 能做到什么程度与明确不能做什么
+>
+> - **能做到什么程度**：纯 Java 8（19 源文件、AGPL-3.0-only、Android `minSdk 21` 免 desugaring）完成多源分块竞速、失败切换、`.part` + `anabranch-meta/2` 跨源续传与 SHA-256 逐块核验，并通过独立 `anabranch-aria2` AAR 隔离开 GPL 原生加速与自定义 `Engine`/`Policy`/`Source.Resolver`。
+> - **明确不能做什么**：刻意保持无状态下载库身份——不内置镜像清单、不存全局设置、不解包压缩包、不装 APK、无 UI 与前台服务；`Source.maxChunks` 尚仅作元数据；`Aria2Downloader` 全局 `BUSY` 串行执行且下载完成后统一校验 `.a2part`。
+>
+> **交互式接口参考**：需按类查阅 `Downloader`、`Request`、`Integrity`、`Engine`/`Policy` 与 `Aria2Downloader` 签名和限制，可直接使用 [API 与组件参考](/api-reference/)。
 
 ## 一分钟源码编测（零 Gradle 依赖）
 

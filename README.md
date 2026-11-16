@@ -13,6 +13,13 @@
 - **跨源续传与可信校验**：伴生 `<target>.part` 与 `anabranch-meta/2` 控制文件记录 `P/D/V` 块状态；同源对比 `ETag`，跨源续传依赖调用方通过 `Integrity` 提供的逐块与整份 SHA-256。
 - **纯 Java 8 边界与产物隔离**：`src/io/anabranch/` 全部 19 个核心文件零 `android.*`、零三方依赖且通过 `javac --release 8` 校验；`aria2` 原生后端独立成 AAR，互不牵连。
 
+## 能做到什么程度与明确不能做什么
+
+| 维度 | 能做到什么程度（已实现能力） | 明确不能做什么（非目标与硬限制） |
+| --- | --- | --- |
+| 核心调度与续传 | 纯 Java 8（19 源文件，`minSdk 21` 免 desugaring）多镜像分块、`Policy.fastestFirst()`、`.part` + `.meta` 续传与 SHA-256 核验 | **不内置**镜像清单/持久化配置/解压与安装/UI 与前台服务；`Source.maxChunks` 目前仅为元数据字段 |
+| 扩展与 `aria2` 隔离 | 支持自定义 `Engine`（如 OkHttp）、`Policy` 与 `Source.Resolver`；`anabranch-aria2` AAR 隔离 `GPL-3.0-or-later` | `Aria2Downloader` 全局 `BUSY` 串行且忽略 Core `Policy`；Maven Central 坐标须手动触发发布，集成前需核实在线状态 |
+
 ```mermaid
 flowchart LR
     Req["Request + SourceSet"] --> Probe["Engine.probe + Resume (.meta v2)"]
@@ -51,7 +58,7 @@ Result res = dl.download(Request.of("pkg.bin", new File("out/pkg.bin")), set, Li
 | **纯 Java 8 / JVM 核心库** | 零第三方依赖，`HttpEngine` 开箱即用；预定 Maven 坐标 `io.github.cybernova2333:anabranch-core:0.1.0` | [起步与双产物概览](docs-site/docs/index.md) |
 | **Android (`minSdk 21`) 接入** | 通过 `--release 8` 与边界扫描，无需开启 Core Library Desugaring；需 `INTERNET` 权限 | [集成配置、权限与排错](docs-site/docs/deployment.md) |
 | **可选 `aria2` JNI 后端** | 独立 `anabranch-aria2` AAR；libaria2 单线程 `runOnce` 驱动 + 双 TLS 后端 dead-man's switch | [aria2 设计说明](docs/ARIA2.md) · [原生构建](docs-site/docs/deployment.md) |
-| **自定义 `Engine` / `Policy`** | 支持替换 OkHttp 等传输栈或实现自定义选路/熔断策略，严守向内单向依赖边界 | [公开 API 与扩展契约](docs-site/docs/contracts.md) |
+| **自定义 `Engine` / `Policy`** | 支持替换 OkHttp 等传输栈或实现自定义选路/熔断策略，严守向内单向依赖边界 | [公开 API 与扩展契约](docs-site/docs/contracts.md) · [API 与组件参考](docs-site/api-reference/index.md) |
 
 ## 选型前常见问题
 

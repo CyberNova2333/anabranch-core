@@ -10,14 +10,14 @@ hero:
       text: Getting Started
       link: /en/docs/
     - theme: alt
+      text: API & SPI Reference
+      link: /en/api-reference/
+    - theme: alt
       text: Public API & Contracts
       link: /en/docs/contracts
     - theme: alt
       text: Architecture & Source
       link: /en/docs/architecture
-    - theme: alt
-      text: GitHub Repository
-      link: https://github.com/CyberNova2333/anabranch-core
 
 features:
   - title: Multi-Mirror Chunk Scheduling
@@ -29,6 +29,19 @@ features:
   - title: Clean Artifact & License Isolation
     details: Core has 19 Java 8 files (AGPL-3.0-only, zero android.* or Java 9+ APIs). Optional aria2 JNI backend ships as a separate GPL-3.0-or-later AAR.
 ---
+
+## Capabilities & Explicit Limits
+
+::: info What Anabranch Core Delivers
+- **Zero-Dep Pure Java 8 Multi-Mirror Scheduler**: 19 `AGPL-3.0-only` source files (no `android.*`, compatible with Android `minSdk 21` without desugaring) offering `Policy.fastestFirst()`/`weighted()`, `.part` + `.meta` v2 resume, and per-chunk SHA-256 verification.
+- **Failure-Only Retry Budgets & Pluggable SPIs**: Caps retries at 6 per chunk / `60s` failure budget without penalizing healthy slow transfers, supporting custom `Engine`, `Policy`, and `Source.Resolver`.
+- **GPL-Isolated Optional `aria2` AAR**: Separate `anabranch-aria2` artifact enables drop-in `Aria2Downloader` switching without exposing pure Java users to GPL requirements.
+:::
+
+::: warning Explicit Non-Goals & Hard Boundaries
+- **Strictly Stateless Library**: Never bundles mirror URLs, persisted preferences, archive unpacking, APK installation UI, or foreground Android services.
+- **Known Bounds & Manual Publishing**: `Source.maxChunks` is currently metadata-only; `Aria2Downloader` serializes globally under `BUSY` without Core `Policy`; Maven Central publication is manual (verify live coordinates before release use).
+:::
 
 ## Architecture Overview
 

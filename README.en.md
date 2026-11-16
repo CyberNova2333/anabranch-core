@@ -13,6 +13,13 @@ Zero-dependency multi-source segmented download library for **Java 8 and Android
 - **Resumable `.meta` v2 & Digest Guard**: Persists `P/D/V` chunk states across `<target>.part` and `anabranch-meta/2` (`.meta`), validates `ETag` on same-source resumes, and checks per-chunk and whole-file SHA-256 digests before target rename.
 - **Java 8 & Artifact Isolation**: Core comprises 19 plain Java 8 files with zero third-party deps and zero `android.*` imports; optional `aria2` native binaries ship in a separate AAR.
 
+## Capabilities & Explicit Non-Goals
+
+| Area | What Anabranch Core Delivers | Explicit Non-Goals & Hard Bounds |
+| --- | --- | --- |
+| Scheduler & Resume | Zero-dep Java 8 (19 files, `minSdk 21` clean), multi-mirror chunking, `fastestFirst()`, `.part` + `.meta` resume, SHA-256 checks | **No** built-in mirror URLs, global persisted config, archive extraction, APK install, UI, or foreground services; `Source.maxChunks` is metadata-only today |
+| Extensions & `aria2` | Pluggable `Engine` / `Policy` / `Source.Resolver`; `anabranch-aria2` AAR isolates `GPL-3.0-or-later` obligations | `Aria2Downloader` serializes globally under `BUSY` and bypasses Core `Policy`; Maven Central publication is manual (verify live coordinates) |
+
 ```mermaid
 flowchart LR
     Req["Request + SourceSet"] --> Probe["Engine.probe + Resume (.meta v2)"]
@@ -51,7 +58,7 @@ Result res = dl.download(Request.of("pkg.bin", new File("out/pkg.bin")), set, Li
 | **Pure Java 8 / JVM Core** | Zero deps, default `HttpEngine`; Maven coordinate `io.github.cybernova2333:anabranch-core:0.1.0` | [Overview & Quick Start](docs-site/en/docs/index.md) |
 | **Android (`minSdk 21`)** | Verified via `javac --release 8` and boundary scans; no desugaring required; needs `INTERNET` | [Integration & Troubleshooting](docs-site/en/docs/deployment.md) |
 | **Optional `aria2` JNI Backend** | Separate `anabranch-aria2` AAR with single-thread `runOnce` and TLS dead-man's switch | [aria2 Design](docs/ARIA2.md) · [Build & Setup](docs-site/en/docs/deployment.md) |
-| **Custom `Engine` / `Policy`** | Plug in OkHttp or custom selection rules while preserving unidirectional core boundaries | [API & Extension Contracts](docs-site/en/docs/contracts.md) |
+| **Custom `Engine` / `Policy`** | Plug in OkHttp or custom selection rules while preserving unidirectional core boundaries | [API & Extension Contracts](docs-site/en/docs/contracts.md) · [API & Component Reference](docs-site/en/api-reference/index.md) |
 
 ## Pre-Adoption FAQ
 

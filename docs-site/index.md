@@ -10,14 +10,14 @@ hero:
       text: 起步与集成
       link: /docs/
     - theme: alt
+      text: API 与组件参考
+      link: /api-reference/
+    - theme: alt
       text: 公开 API 与契约
       link: /docs/contracts
     - theme: alt
       text: 架构与源码导览
       link: /docs/architecture
-    - theme: alt
-      text: GitHub 仓库
-      link: https://github.com/CyberNova2333/anabranch-core
 
 features:
   - title: 多源并发分块调度
@@ -29,6 +29,19 @@ features:
   - title: 纯 Java 8 / 许可证隔离
     details: 核心仅 19 个源文件且严格通过 javac --release 8 与边界检查；可选原生 aria2 后端独立为 GPL-3.0-or-later AAR，互不牵连。
 ---
+
+## 能力定位与明确边界
+
+::: info 能做到什么程度（已实现能力）
+- **零依赖纯 Java 8 多源并发**：仅 19 个 `Apache-2.0` 源文件（零 `android.*` 与三方库，兼容 `minSdk 21` 免 desugaring），支持 `Policy.fastestFirst()`（EMA 吞吐/并发）与 `weighted()` 并发调度及 `.part` + `anabranch-meta/2` 跨源断点续传。
+- **失败预算熔断与强摘要检验**：默认单块 6 次退避与 `chunkRetryBudgetMs`（`60s` 纯失败计时），逐块与整份 SHA-256 检验后原子重命名；支持插拔自定义 `Engine`（如 OkHttp）、`Policy` 与 `Source.Resolver`。
+- **可选 `aria2` 原生后端隔离**：通过独立 `GPL-3.0-or-later` `anabranch-aria2` AAR 无缝切换 `libaria2`，不污染纯 Java 调用方许可证与体积。
+:::
+
+::: warning 明确不能做什么（非目标与硬限制）
+- **严格无状态下载库**：不内置镜像 URL 清单、不持久化全局配置、不承担压缩包解压或 APK 安装、不构建 UI 或 Android 前台服务。
+- **已知契约与发版约束**：`Source.maxChunks` 目前仅作元数据尚未做单源并发硬限；`Aria2Downloader` 全局 `BUSY` 串行且不走 Core `Policy`；Maven Central 为手动发版（集成前须先确认在线可用或直接编源码）。
+:::
 
 ## 架构全景
 
