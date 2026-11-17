@@ -7,7 +7,11 @@
 </p>
 
 <p align="center">
-  <a href="README.md">简体中文</a> · <strong>English</strong> · <a href="https://anabranch-core.cbnv.me/en/">Documentation Site</a> · <a href="LICENSE">AGPL-3.0-only</a>
+  <a href="README.md">简体中文</a> | <strong>English</strong>
+</p>
+
+<p align="center">
+  <a href="https://anabranch-core.cbnv.me/en/">Documentation Site</a> · <a href="LICENSE">AGPL-3.0-only</a>
 </p>
 
 Zero-dependency multi-source segmented download library for **Java 8 and Android (`minSdk 21`)**: splits one file into byte ranges across mirrors with throughput-aware selection, per-chunk failover, cross-source resume, and SHA-256 verification, paired with an optional standalone `aria2` JNI backend (`anabranch-aria2`).

@@ -7,7 +7,11 @@
 </p>
 
 <p align="center">
-  <strong>简体中文</strong> · <a href="README.en.md">English</a> · <a href="https://anabranch-core.cbnv.me/">在线文档站</a> · <a href="LICENSE">AGPL-3.0-only</a>
+  <strong>简体中文</strong> | <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
+  <a href="https://anabranch-core.cbnv.me/">在线文档站</a> · <a href="LICENSE">AGPL-3.0-only</a>
 </p>
 
 面向 **Java 8 与 Android (`minSdk 21`)** 的零第三方依赖多源分块下载库：将单个文件拆分为固定字节区间派发至多条同构镜像，提供吞吐测速选源、分块失败切源、跨源断点续传与 SHA-256 逐块/整份校验，另有独立封装的可选 `aria2` JNI 原生后端（`anabranch-aria2`）。
