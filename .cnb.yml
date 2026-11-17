@@ -3,15 +3,11 @@
   image: eclipse-temurin:21-jdk
   script: |
     set -eu
-    command -v python3 >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends python3; }
-    rm -rf build/check
-    mkdir -p build/check/core build/check/aria2 build/check/all
-    javac --release 8 -encoding UTF-8 -d build/check/core $(find src -name '*.java')
-    javac --release 8 -encoding UTF-8 -cp build/check/core -d build/check/aria2 $(find aria2/src -name '*.java')
-    javac -encoding UTF-8 -d build/check/all $(find src aria2/src test -name '*.java')
-    python3 tools/check-core-boundaries.py
-    java -cp build/check/all io.anabranch.SingleSourceTest
-    rm -rf build
+    if ! command -v python3 >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+      apt-get update && apt-get install -y --no-install-recommends python3 git
+    fi
+    git config --global --add safe.directory "$PWD"
+    sh tools/run-checks.sh
 
 .build-docs: &build-docs
   name: 构建并核对文档站
@@ -19,8 +15,7 @@
   script: |
     set -eu
     corepack enable
-    pnpm --dir docs-site install --frozen-lockfile
-    pnpm --dir docs-site run docs:build
+    (cd docs-site && pnpm install --frozen-lockfile && pnpm run docs:build)
     test -f docs-site/.vitepress/dist/index.html
 
 main:
