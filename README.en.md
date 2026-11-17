@@ -1,6 +1,6 @@
 # Anabranch Core
 
-[简体中文](README.md) · [English](README.en.md) · [Documentation Site](https://cybernova2333.github.io/anabranch-core/en/) · [AGPL-3.0-only](LICENSE)
+[简体中文](README.md) · [English](README.en.md) · [Documentation Site](https://anabranch-core.cbnv.me/en/) · [AGPL-3.0-only](LICENSE)
 
 ![Java 8+](https://img.shields.io/badge/Java-8%2B-orange) ![Android minSdk 21](https://img.shields.io/badge/Android-minSdk%2021-green) ![Zero Core Deps](https://img.shields.io/badge/Core%20Dependencies-0-blue)
 
