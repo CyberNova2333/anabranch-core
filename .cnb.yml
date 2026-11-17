@@ -1,0 +1,46 @@
+.check-code: &check-code
+  name: Java 8 编译、边界守卫与单源测试
+  image: eclipse-temurin:21-jdk
+  script: |
+    set -eu
+    command -v python3 >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends python3; }
+    rm -rf build/check
+    mkdir -p build/check/core build/check/aria2 build/check/all
+    javac --release 8 -encoding UTF-8 -d build/check/core $(find src -name '*.java')
+    javac --release 8 -encoding UTF-8 -cp build/check/core -d build/check/aria2 $(find aria2/src -name '*.java')
+    javac -encoding UTF-8 -d build/check/all $(find src aria2/src test -name '*.java')
+    python3 tools/check-core-boundaries.py
+    java -cp build/check/all io.anabranch.SingleSourceTest
+    rm -rf build
+
+.build-docs: &build-docs
+  name: 构建并核对文档站
+  image: node:22-bookworm
+  script: |
+    set -eu
+    corepack enable
+    pnpm --dir docs-site install --frozen-lockfile
+    pnpm --dir docs-site run docs:build
+    test -f docs-site/.vitepress/dist/index.html
+
+main:
+  push:
+    - name: 持续集成与构建检查
+      lock:
+        key: checks_main
+        wait: true
+        cancel-in-wait: true
+      stages:
+        - *check-code
+        - *build-docs
+
+$:
+  web_trigger_check:
+    - name: 手动构建检查（不发布）
+      lock:
+        key: checks_manual
+        wait: true
+        cancel-in-wait: true
+      stages:
+        - *check-code
+        - *build-docs
