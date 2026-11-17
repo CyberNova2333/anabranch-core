@@ -1,8 +1,14 @@
-# Anabranch Core
+<h1 align="center">Anabranch Core</h1>
 
-[简体中文](README.md) · [English](README.en.md) · [在线文档站](https://anabranch-core.cbnv.me/) · [AGPL-3.0-only](LICENSE)
+<p align="center">
+  <img src="https://img.shields.io/badge/Java-8%2B-orange" alt="Java 8+" />
+  <img src="https://img.shields.io/badge/Android-minSdk%2021-green" alt="Android minSdk 21" />
+  <img src="https://img.shields.io/badge/Core%20Dependencies-0-blue" alt="Zero Core Deps" />
+</p>
 
-![Java 8+](https://img.shields.io/badge/Java-8%2B-orange) ![Android minSdk 21](https://img.shields.io/badge/Android-minSdk%2021-green) ![Zero Core Deps](https://img.shields.io/badge/Core%20Dependencies-0-blue)
+<p align="center">
+  <strong>简体中文</strong> · <a href="README.en.md">English</a> · <a href="https://anabranch-core.cbnv.me/">在线文档站</a> · <a href="LICENSE">AGPL-3.0-only</a>
+</p>
 
 面向 **Java 8 与 Android (`minSdk 21`)** 的零第三方依赖多源分块下载库：将单个文件拆分为固定字节区间派发至多条同构镜像，提供吞吐测速选源、分块失败切源、跨源断点续传与 SHA-256 逐块/整份校验，另有独立封装的可选 `aria2` JNI 原生后端（`anabranch-aria2`）。
 
