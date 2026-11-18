@@ -18,7 +18,7 @@ Anabranch Core 解决的是单文件、多镜像并发下载与可信校验问�
 
 | Maven 构件（`build.gradle.kts`） | 包名 | 实现方式 | 运行时依赖与许可证 |
 | --- | --- | --- | --- |
-| `io.github.cybernova2333:anabranch-core:0.1.0` | `io.anabranch.*` | 纯 Java 8（`HttpURLConnection`） | **零第三方依赖**，不引入 `android.*`，`AGPL-3.0-only`（适用根目录 `ADDITIONAL_TERMS.zh-CN.md` / `ASSET_LICENSES.md`） |
+| `io.github.cybernova2333:anabranch-core:0.1.0` | `io.anabranch.*` | 纯 Java 8（`HttpURLConnection`） | **零第三方依赖**，不引入 `android.*`，`AGPL-3.0-only`（适用根目录 `LICENSE-ADDITIONAL_TERMS-zh-CN.md` / `ASSET_LICENSES.md`） |
 | `io.github.cybernova2333:anabranch-aria2:0.1.0`（可选） | `io.anabranch.aria2.*` | Java 胶水 + JNI `libaria2` `.so` | 依赖同版本 core；二进制 AAR 按 `GPL-3.0-or-later` 分发 |
 
 > **发布状态提醒**：`build.gradle.kts` 已声明上述坐标与签名打包任务，但制品**尚未自动推至 Maven Central**（发布为手动动作）。集成前请先核对 Central 上是否已有目标版本；如从源码直连，可直接引用 `src/io/anabranch/` 或在本地执行 `gradle centralBundle` 检验构建产物。
