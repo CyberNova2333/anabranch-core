@@ -97,3 +97,5 @@ Result res = dl.download(Request.of("pkg.bin", new File("out/pkg.bin")), set, Li
 
 - **开源协议**：`anabranch-core` 核心库及 `aria2/` 纯 Java 胶水源码均以 [AGPL-3.0-only](LICENSE) 发布；包含编译产物 `.so` 的可选 `anabranch-aria2` 二进制 AAR 整体遵循 **GPL-3.0-or-later**，第三方许可清单与源码义务见 [`aria2/THIRD-PARTY-NOTICES.md`](aria2/THIRD-PARTY-NOTICES.md)。
 - **无状态库边界**：本库采用净室设计并保持完全无状态——不内置镜像 URL 清单、不持久化全局配置、不承担压缩包解压或 APK 安装、不构建 UI 或前台服务；镜像一致性由调用方及所提供的 `Integrity` 摘要共同保证。
+
+- **附加条款与资产规则**：本项目依据 GNU AGPLv3 第 7 条适用 [`ADDITIONAL_TERMS.zh-CN.md`](ADDITIONAL_TERMS.zh-CN.md)（英文参考译文：[`ADDITIONAL_TERMS.en.md`](ADDITIONAL_TERMS.en.md)，以简体中文完整版正文为准），对来源陈述、修改标识、禁止冒充、扩展模块有条件附加许可及项目标识边界作出补充说明；独立美术、字体与图标许可清单见 [`ASSET_LICENSES.md`](ASSET_LICENSES.md)。第 9.5–9.6 款的附加许可豁免仅对已取得相应版权持有人有效授权的适用材料生效，未取得该等授权的第三方或上游材料仍受其原有有效许可约束。
