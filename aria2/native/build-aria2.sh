@@ -108,17 +108,19 @@ build_deps() { # build_deps <abi> <host> <cc> <cxx> <openssl-target> <extra-cfla
     cp "$ZLIB_SRC/zlib.h" "build-zlib-$abi/zconf.h" "$PREFIX/include/"
     cp "build-zlib-$abi/libz.a" "$PREFIX/lib/libz.a"
 
-    # OpenSSL 1.1.1w（全量构建里两组都要：openssl 组做 TLS；gnutls 组仅供
-    # libssh2 的加密原语——libssh2 不支持 gnutls 后端。裁剪构建里只有
-    # openssl 组用它，但反正要编，不为裁剪多开分支）
+    # OpenSSL 3.5.x LTS（Apache-2.0，与 GPLv3/LGPLv3/AGPLv3 完全兼容；全量构建里
+    # 两组都要：openssl 组做 TLS；gnutls 组仅供 libssh2 的加密原语——libssh2 不支持
+    # gnutls 后端。裁剪构建里只有 openssl 组用它，但反正要编，不为裁剪多开分支）。
+    # OpenSSL 3.x 默认在 64 位目标下装到 lib64，必须显式传 --libdir=lib 保持与
+    # 其余静态依赖的 $PREFIX/lib 一致；no-module/no-dso 避免静态 .so 内动态加载。
     echo "── openssl ($abi)"
     rm -rf "build-openssl-$abi" && cp -r "$OPENSSL_SRC" "build-openssl-$abi"
     run_log "$OUT/logs/openssl-$abi-conf.log" \
-        env -i PATH="$PATH" HOME="${HOME:-/tmp}" ANDROID_NDK_HOME="$NDK" \
-        bash -c "cd build-openssl-$abi && ./Configure $osstarget no-shared no-tests \
-            -D__ANDROID_API__=21 -fPIC -w --prefix='$PREFIX'"
-    run_log "$OUT/logs/openssl-$abi-build.log" make -C "build-openssl-$abi" -j"$NPROC"
-    run_log "$OUT/logs/openssl-$abi-inst.log" make -C "build-openssl-$abi" install_sw
+        env -i PATH="$PATH" HOME="${HOME:-/tmp}" ANDROID_NDK_ROOT="$NDK" ANDROID_NDK_HOME="$NDK" \
+        bash -c "cd build-openssl-$abi && ./Configure $osstarget no-shared no-tests no-module no-dso no-apps \
+            -D__ANDROID_API__=21 -fPIC -w --prefix='$PREFIX' --libdir=lib"
+    run_log "$OUT/logs/openssl-$abi-build.log" env ANDROID_NDK_ROOT="$NDK" ANDROID_NDK_HOME="$NDK" make -C "build-openssl-$abi" -j"$NPROC"
+    run_log "$OUT/logs/openssl-$abi-inst.log" env ANDROID_NDK_ROOT="$NDK" ANDROID_NDK_HOME="$NDK" make -C "build-openssl-$abi" install_sw
 
     if [ -n "${ARIA2_SLIM:-}" ]; then
         echo "  ·（裁剪构建：跳过 libxml2 / sqlite3 / libssh2）"
@@ -145,12 +147,15 @@ build_deps() { # build_deps <abi> <host> <cc> <cxx> <openssl-target> <extra-cfla
     xmake "$OUT/logs/sqlite-$abi-build.log" "build-sqlite-$abi"
     run_log "$OUT/logs/sqlite-$abi-inst.log" make -C "build-sqlite-$abi" install
 
-    # libssh2（crypto=openssl；两组同此）
+    # libssh2（crypto=openssl；两组同此；32 位 armv7 静态链接 OpenSSL 3.x 时需 -latomic）
     echo "── libssh2 ($abi)"
     rm -rf "build-ssh2-$abi" && mkdir "build-ssh2-$abi"
+    local ssh2_extra=()
+    if [ "$abi" = "armeabi-v7a" ]; then ssh2_extra=(LIBS="-latomic"); fi
     xconf "$OUT/logs/ssh2-$abi-conf.log" "build-ssh2-$abi" "$SSH2_SRC" "$host" "$cc" "$cxx" "$depxc" "$PREFIX" \
         --enable-static --disable-shared \
-        --with-crypto=openssl --with-libssl-prefix="$PREFIX" --with-libz
+        --with-crypto=openssl --with-libssl-prefix="$PREFIX" --with-libz \
+        "${ssh2_extra[@]}"
     xmake "$OUT/logs/ssh2-$abi-build.log" "build-ssh2-$abi"
     run_log "$OUT/logs/ssh2-$abi-inst.log" make -C "build-ssh2-$abi" install
 
@@ -257,7 +262,11 @@ build_group() { # build_group <abi> <host> <cc> <cxx> <xcflags> <backend: openss
     # SONAME 与 Java 侧 System.loadLibrary("aria2-<be>") 一一对应。
     local SONAME="libaria2-${be}.so"
     local compat=()
-    if [ "$abi" = "armeabi-v7a" ]; then compat=("$GLUE_DIR/compat_arm.c"); fi
+    local extra_libs=()
+    if [ "$abi" = "armeabi-v7a" ]; then
+        compat=("$GLUE_DIR/compat_arm.c")
+        extra_libs=(-latomic)
+    fi
     local deplibs
     if [ -n "${ARIA2_SLIM:-}" ]; then
         # 裁剪面：没有 ssh2 之后，gnutls 后端连 OpenSSL 都不需要了——
@@ -294,7 +303,7 @@ build_group() { # build_group <abi> <host> <cc> <cxx> <xcflags> <backend: openss
         -Wl,-z,max-page-size=16384 -Wl,--build-id=sha1 \
         -static-libstdc++ \
         -Wl,-soname,"$SONAME" \
-        -llog -ldl -lm \
+        -llog -ldl -lm "${extra_libs[@]}" \
         -o "$OUT/$abi/$SONAME"
     # --strip-unneeded 只删局部符号，动态符号/标记/NEEDED 全保留；
     # verify_so 在 strip 后跑，验的正是最终产物。

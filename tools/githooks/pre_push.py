@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Anabranch Core and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 """pre-push 钩子：检查**本次推送新增**的提交信息。
 
 为什么需要这一道：commit-msg 只管得住「提交这个动作发生在这份克隆里」。在别处

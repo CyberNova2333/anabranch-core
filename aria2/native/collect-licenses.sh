@@ -1,6 +1,6 @@
 #!/bin/bash
 # 从 pinned 的上游源码里**原样**抽出各组件的许可证与版权声明，供打进 AAR
-# （META-INF/licenses/）。GPL 要求随分发附 License 副本；OpenSSL 旧许可、BSD、
+# （META-INF/licenses/）。GPL/AGPL 要求随分发附 License 副本；Apache-2.0、BSD、
 # MIT 都要求二进制分发复制版权与许可声明——只有我们自己写的 NOTICES 汇总表
 # 不算数，原文必须在。
 #
@@ -13,6 +13,7 @@
 set -euo pipefail
 
 OUT="${1:?用法: collect-licenses.sh <输出目录>}"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 for v in ARIA2_SRC OPENSSL_SRC GMP_SRC NETTLE_SRC GNUTLS_SRC ZLIB_SRC; do
     [ -d "${!v:-}" ] || { echo "✗ 请设置 $v 指向已解压源码目录"; exit 1; }
 done
@@ -30,13 +31,16 @@ take() { # take <组件目录> <源文件> [目标文件名]
     cp "$src" "$OUT/$comp/$name"
 }
 
-# 组合体整体按 GPL-3.0-or-later 分发——附 GPLv3 全文（取自 GMP 包，规范文本）
+# 组合体依 AGPLv3 §13 与 GPLv3 兼容组合分发——附 GPLv3、AGPLv3 及附加条款全文
 take . "$GMP_SRC/COPYINGv3" GPL-3.0.txt
+take . "$ROOT/LICENSE" AGPL-3.0.txt
+take . "$ROOT/LICENSE-ADDITIONAL_TERMS-zh-CN.md"
+take . "$ROOT/LICENSE-ADDITIONAL_TERMS-en.md"
 
 take aria2   "$ARIA2_SRC/COPYING"                 # GPLv2 文本 + aria2 版权
-take aria2   "$ARIA2_SRC/LICENSE.OpenSSL"         # aria2 的 OpenSSL 链接例外
+take aria2   "$ARIA2_SRC/LICENSE.OpenSSL"         # aria2 上游原有 OpenSSL 链接例外声明（原文保留）
 take wslay   "$ARIA2_SRC/deps/wslay/COPYING"      # MIT
-take OpenSSL "$OPENSSL_SRC/LICENSE"               # OpenSSL / SSLeay 双许可（要求二进制分发附版权声明）
+take OpenSSL "$OPENSSL_SRC/LICENSE.txt"           # Apache-2.0（OpenSSL 3.x，兼容 GPLv3/LGPLv3/AGPLv3）
 take GnuTLS  "$GNUTLS_SRC/LICENSE"
 take GnuTLS  "$GNUTLS_SRC/doc/COPYING.LESSER"     # LGPL-2.1
 take nettle  "$NETTLE_SRC/COPYING.LESSERv3"
@@ -66,7 +70,7 @@ fi
 
 {
     echo "anabranch-aria2 · 静态链接组件的许可证与版权声明原文"
-    echo "组合体整体按 GPL-3.0-or-later 分发；组件清单与结论见 AAR 根目录的 THIRD-PARTY-NOTICES.md。"
+    echo "组合体依 AGPLv3 §13 与 GPLv3 兼容组合分发（原 aria2 遵循 GPL-3.0-or-later，本项目胶水与 Java 侧遵循 AGPL-3.0-only）；组件清单与边界见 AAR 根目录的 THIRD-PARTY-NOTICES.md。"
     echo "构建面：$( [ -n "${ARIA2_SLIM:-}" ] && echo '裁剪（无 libxml2/SQLite/libssh2）' || echo '全量' )"
     echo
     ( cd "$OUT" && find . -type f ! -name INDEX.txt | sort | sed 's|^\./||' )

@@ -18,7 +18,7 @@ To protect pure-Java integrators from native binary bloat and GPL linking obliga
 
 | Maven Coordinates (`build.gradle.kts`) | Package | Runtime Implementation | License & Dependencies |
 | --- | --- | --- | --- |
-| `io.github.cybernova2333:anabranch-core:0.1.0` | `io.anabranch.*` | Plain Java 8 (`HttpURLConnection`) | Zero third-party deps, zero `android.*`, `AGPL-3.0-only` (governed by root `LICENSE-ADDITIONAL_TERMS-zh-CN.md` / `LICENSE-ADDITIONAL_TERMS-en.md` / `ASSET_LICENSES.md`) |
+| `io.github.cybernova2333:anabranch-core:0.1.0` | `io.anabranch.*` | Plain Java 8 (`HttpURLConnection`) | Zero third-party deps, zero `android.*`, `AGPL-3.0-only` (governed by root `LICENSE-ADDITIONAL_TERMS-zh-CN.md` / `LICENSE-ADDITIONAL_TERMS-en.md` / `ASSETS_LICENSES.md`) |
 | `io.github.cybernova2333:anabranch-aria2:0.1.0` (optional) | `io.anabranch.aria2.*` | Java glue + JNI `libaria2` `.so` | Depends on core; combined binary AAR is `GPL-3.0-or-later` |
 
 > **Release status**: Coordinates and signing/bundling tasks exist in `build.gradle.kts`, while Maven Central publication is manual via `docs/RELEASING.md` and not yet live by default. Verify availability on Central or compile `src/` directly.

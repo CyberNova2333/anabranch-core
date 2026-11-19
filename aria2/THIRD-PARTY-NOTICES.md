@@ -6,21 +6,19 @@
 
 ## 一、整体许可结论
 
-`.so` 静态链接了 aria2（GPL-2.0-or-later）。因此**二进制的组合整体按
-GPL-3.0-or-later 的条款分发**：
+`.so` 静态链接了 aria2（`GPL-2.0-or-later`）。本项目自身的 JNI 胶水与 Java 侧代码采用 `AGPL-3.0-only`（适用根目录附加条款）；二者结合分发二进制产物时，依据 **GPL 第 3 版第 13 条与 AGPLv3 第 13 条的兼容组合机制**处理：
 
-- aria2 是「GPLv2 或更高版本」，本项目自己的胶水与 Java 侧代码采用 AGPL-3.0-only；
-  依 AGPLv3 §13 与 GPLv3 兼容组合，二进制组合体按 AGPL-3.0-only / GPL-3.0-or-later 分发。
-- aria2 的 COPYING 带 OpenSSL 链接例外，OpenSSL 侧的链接由此覆盖。
-- 装着 `.so` 的 AAR 作为一个分发单元，整体同样受上述条款约束；其中
-  `classes.jar`（`io.anabranch.aria2.*`）的**源码**采用 AGPL-3.0-only。
+- 上游 `aria2` 及其原有材料继续适用 **GPL-3.0-or-later**（由 `GPL-2.0-or-later` 依第 13 条组合路径适用 GPLv3），本仓库不将原 GPL 材料概括改授 `AGPL-3.0-only`，也不使根目录附加条款的附加要求或第 9.5 款豁免自动覆盖原 GPL 部分；
+- 本项目自研的 `anabranch-aria2` JNI 胶水（`aria2/native/aria2_jni.cpp` 等）与 Java 侧源码（`aria2/src/io/anabranch/aria2/*`）采用 `AGPL-3.0-only`（含附加条款）；
+- 静态链接进 `.so` 的 **OpenSSL 3.5.9** 采用 **`Apache-2.0`**（自 OpenSSL 3.0 起已由旧 OpenSSL/SSLeay 许可切换为 Apache-2.0），与 GPLv3、LGPLv3 及 AGPLv3 均原生兼容，不存在与 `GnuTLS`/`nettle`/`GMP` 或 `AGPL-3.0-only` 胶水的链接许可冲突；
+- 装着 `.so` 的 AAR 作为组合分发单元，对外分发时须同时满足 AGPLv3 §13 与 GPLv3 的对应源码、许可副本与版权声明保留义务。
 
 **许可与版权原文**：AAR 内 `META-INF/licenses/`（由 `collect-licenses.sh` 从
-pinned 上游源码原样抽出，索引见其中 `INDEX.txt`）——GPL 要求附 License 副本，
-OpenSSL 旧许可 / BSD / MIT 要求二进制分发复制版权声明，本文件的汇总表不能
+pinned 上游源码原样抽出，索引见其中 `INDEX.txt`）——GPL/AGPL 要求附 License 副本，
+Apache-2.0 / BSD / MIT 要求二进制分发复制版权与许可声明，本文件的汇总表不能
 代替原文。
 
-**对应源码的提供方式**（GPLv3 §6）：每个发布版本的 GitHub Release
+**对应源码的提供方式**（GPLv3 §6 / AGPLv3 §6）：每个发布版本的 GitHub Release
 （`https://github.com/CyberNova2333/anabranch-core/releases/tag/v<版本>`）与 AAR
 并列挂一个 `anabranch-aria2-<版本>-corresponding-source*.tar.gz`：静态链接的
 全部上游 tarball（原文件，sha256 与构建时硬校验值一致）+ 该 commit 的胶水、
@@ -31,9 +29,9 @@ Java 源码、构建脚本与 workflow。不只靠上游服务器——上游 UR
 
 | 组件 | 版本 | 许可 | 来源 |
 |---|---|---|---|
-| aria2 | 1.37.0 | GPL-2.0-or-later（含 OpenSSL 链接例外） | github.com/aria2/aria2 |
+| aria2 | 1.37.0 | GPL-2.0-or-later（随包保留原 OpenSSL 例外声明） | github.com/aria2/aria2 |
 | wslay（aria2 内置依赖） | 随 aria2 1.37.0 | MIT | 随 aria2 tarball |
-| OpenSSL | 1.1.1w | OpenSSL / SSLeay 双许可 | openssl.org |
+| OpenSSL | 3.5.9 | Apache-2.0 | openssl.org / github.com/openssl/openssl |
 | GnuTLS | 3.8.3 | LGPL-2.1-or-later | gnutls.org |
 | nettle | 3.9.1 | LGPL-3.0-or-later 或 GPL-2.0-or-later（双许可） | ftp.gnu.org/gnu/nettle |
 | GMP | 6.3.0 | LGPL-3.0-or-later 或 GPL-2.0-or-later（双许可） | gmplib.org |

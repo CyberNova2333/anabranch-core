@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Anabranch Core and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 # 提交前跑这一条就够了：编译 → core 边界 → 两套测试。
 #
 # 「javac 过了」不等于「能提交」——这个库的正确性几乎全在测试里，而测试是真起

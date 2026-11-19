@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: AGPL-3.0-only
+# This file is part of Anabranch Core and is licensed under GNU AGPLv3 with Additional Terms (see LICENSE and LICENSE-ADDITIONAL_TERMS-zh-CN.md; ref: LICENSE-ADDITIONAL_TERMS-en.md).
 """PreToolUse 钩子（matcher: Bash）—— 让 tools/githooks/ 里的 git 钩子自动生效。
 
 git 自己的钩子没法从入库文件里自动生效：`core.hooksPath` 是每份克隆的本地配置，
