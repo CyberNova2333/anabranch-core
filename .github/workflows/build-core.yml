@@ -52,16 +52,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '17'
 
       # 仓库刻意不放 wrapper（CONTRIBUTING「构建系统只管发布」），Gradle 版本在
       # 这里钉死——与发布配置本地验证时用的是同一版。
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
           gradle-version: '8.14.3'
 
@@ -93,7 +93,7 @@ jobs:
       # ── 可选：取本 run 里刚编好的 AAR 一起发 ────────────────────────────
       - name: 取本 run 的 aria2 AAR
         if: ${{ inputs.include_aria2 }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: libaria2-so${{ inputs.aria2_slim && '-slim' || '' }}
           path: aria2-artifact
@@ -205,7 +205,7 @@ jobs:
 
       - name: 取本 run 的 aria2 对应源码包
         if: ${{ inputs.release && inputs.include_aria2 }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: anabranch-aria2-corresponding-source${{ inputs.aria2_slim && '-slim' || '' }}
           path: dist
@@ -224,7 +224,7 @@ jobs:
             echo "Maven Central：\`io.github.cybernova2333:anabranch-core:${VERSION}\`（Central 部署 ${DEPLOYMENT_ID}）"
             if [ "$INCLUDE_ARIA2" = "true" ]; then
               echo
-              echo "anabranch-aria2：\`io.github.cybernova2333:anabranch-aria2:${VERSION}\`（AAR，GPL-3.0-or-later）。"
+              echo "anabranch-aria2：\`io.github.cybernova2333:anabranch-aria2:${VERSION}\`（AAR，组合体依 AGPLv3 §13 与 GPLv3 兼容组合分发：原 aria2 遵循 GPL-3.0-or-later，本项目胶水与 Java 侧遵循 AGPL-3.0-only）。"
               echo "本 Release 附带其**对应源码包**（anabranch-aria2-*-corresponding-source*.tar.gz）：静态链接的全部上游 tarball + 该 commit 的胶水与构建脚本，见包内 README.txt 与 AAR 内 THIRD-PARTY-NOTICES.md。"
             fi
           } > release-notes.md
@@ -235,7 +235,7 @@ jobs:
           gh release create "v${VERSION}" --title "v${VERSION}" --notes-file release-notes.md "${assets[@]}"
 
       - name: 上传产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: anabranch-core-${{ env.VERSION }}${{ !inputs.release && '-unsigned' || '' }}
           path: dist/

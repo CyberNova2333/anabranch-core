@@ -38,17 +38,22 @@ jobs:
       GH_TOKEN: ${{ secrets.SECRETS_WRITER_PAT }}
     steps:
       - name: 前置核对
+        env:
+          INPUT_OVERWRITE: ${{ inputs.overwrite }}
         run: |
           set -euo pipefail
           : "${GH_TOKEN:?缺 secret SECRETS_WRITER_PAT（细粒度 PAT，权限只需 Secrets/Variables 写）}"
           if gh secret list -R "$GITHUB_REPOSITORY" | grep -q '^MAVEN_GPG_PRIVATE_KEY\b'; then
-            if [ "${{ inputs.overwrite }}" != "true" ]; then
+            if [ "$INPUT_OVERWRITE" != "true" ]; then
               echo "::error::MAVEN_GPG_PRIVATE_KEY 已存在。要换 key 请勾 overwrite"; exit 1
             fi
             echo "::warning::将覆盖已有的 MAVEN_GPG_PRIVATE_KEY / MAVEN_GPG_PASSPHRASE"
           fi
 
       - name: 生成 key（RSA 4096，随机口令，不过期）
+        env:
+          INPUT_UID_NAME: ${{ inputs.uid_name }}
+          INPUT_UID_EMAIL: ${{ inputs.uid_email }}
         run: |
           set -euo pipefail
           export GNUPGHOME="$(mktemp -d)"; chmod 700 "$GNUPGHOME"; echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
@@ -56,7 +61,7 @@ jobs:
           echo "::add-mask::$pass"
           printf '%s' "$pass" > "$GNUPGHOME/pass.txt"
           gpg --batch --pinentry-mode loopback --passphrase-file "$GNUPGHOME/pass.txt" \
-              --quick-gen-key "${{ inputs.uid_name }} <${{ inputs.uid_email }}>" rsa4096 sign 0
+              --quick-gen-key "${INPUT_UID_NAME} <${INPUT_UID_EMAIL}>" rsa4096 sign 0
           fpr="$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')"
           [ -n "$fpr" ] || { echo "::error::生成后找不到指纹"; exit 1; }
           echo "GPG_FPR=$fpr" >> "$GITHUB_ENV"
@@ -91,6 +96,9 @@ jobs:
           echo "已写入 secret：MAVEN_GPG_PRIVATE_KEY、MAVEN_GPG_PASSPHRASE；variable：MAVEN_GPG_FINGERPRINT"
 
       - name: 公钥存档（artifact 里只有公钥）
+        env:
+          INPUT_UID_NAME: ${{ inputs.uid_name }}
+          INPUT_UID_EMAIL: ${{ inputs.uid_email }}
         run: |
           set -euo pipefail
           mkdir -p out
@@ -99,13 +107,13 @@ jobs:
             echo "## Maven 签名 key 已就绪"
             echo
             echo "- 指纹：\`$GPG_FPR\`"
-            echo "- UID：${{ inputs.uid_name }} <${{ inputs.uid_email }}>"
+            echo "- UID：${INPUT_UID_NAME} <${INPUT_UID_EMAIL}>"
             echo "- 已传 keyserver.ubuntu.com；私钥与口令已写入本仓库 secret"
             echo "- 现在可以删掉 SECRETS_WRITER_PAT；Central 侧还差 CENTRAL_USERNAME / CENTRAL_PASSWORD（见 docs/RELEASING.md §四）"
           } >> "$GITHUB_STEP_SUMMARY"
           rm -rf "$GNUPGHOME"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: maven-signing-public-key
           path: out/

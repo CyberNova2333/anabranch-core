@@ -23,7 +23,7 @@
 
 - 默认在正式 `main` 分支工作，无默认 PR 流程；用户未授权时不提交或推送。唯一例外为修复 main 检查失败的 `hotfix/<用途>`，全会话最多一条，合入后退役；不以新分支触发 CI。
 - Conventional Commits：`type(scope): 中文描述`。允许 `feat fix refactor docs test chore ci perf build`，可用破坏性 `!`；一功能一提交，正文解释原因，结尾交代 `文档: 已更新…` 或具体不影响原因。
-- 人类是作者，身份按实际参与者核对，没有默认值，不确定则先确认；Agent 仅作为实际 co-author，完整 `Name <email>`。已登记：`Claude <noreply@anthropic.com>`、`Codex <noreply@openai.com>`；新 Agent 首次贡献时登记。不用 CI bot 代人署名。
+- 人类是作者，身份按实际参与者核对，没有默认值，不确定则先确认；Agent 仅作为实际 co-author，完整 `Name <email>`。已登记：`Claude <noreply@anthropic.com>`、`Codex <noreply@openai.com>`、`gemini-code-assist <200291788+gemini-code-assist@users.noreply.github.com>`；新 Agent 首次贡献时登记。不用 CI bot 代人署名。
 - 所有非初始提交必须 SSH 签名，不用未签名提交或 Agent 通用签名密钥；生成密钥时私钥只留本机，仅把公钥交给维护者登记。
 - 不写具体模型档位/版本、会话链接/标记、凭据、私有仓名、内部域名、运行时端点、主机或资源管线细节；用中性功能表述。此约束同时适用于源码、注释、文档、提交与 PR。
 - 历史 bundle 导入已非日常流程；`tools/rebase-bundle-to-main.sh` 仅在明确要求时使用。基线须为已验证 origin/main，保留 tree 一致性和本机签名验证；不得从历史流程推导改写或推送授权。
